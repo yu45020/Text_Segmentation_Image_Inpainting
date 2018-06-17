@@ -95,38 +95,50 @@ def Conv_block(in_channels, out_channels, kernel_size, stride=1,
 
 
 class PartialConvBlock(BaseModule):
+    # mask is binary, 0 is masked point, 1 is not
     # reference :
     # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv
     # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True,
-                 BN=False, activation=None):
+                 padding=0, dilation=1, groups=1, bias=True, BN=False, activation=None):
         super(PartialConvBlock, self).__init__()
-        self.pconv = nn.Sequential(*Conv_block(in_channels, out_channels, kernel_size, stride,
-                                               padding, dilation, groups, bias,
-                                               BN, activation))
+        self.conv = nn.Sequential(*Conv_block(in_channels, out_channels, kernel_size, stride,
+                                              padding, dilation, groups, bias,
+                                              BN, activation))
 
-        self.mask_conv = nn.Sequential(*Conv_block(in_channels, out_channels, kernel_size, stride,
-                                                   padding=0, dilation=dilation, groups=groups, bias=False,
-                                                   BN=BN, activation=nn.ReLU()))
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0, dilation=dilation,
+                                   bias=False)
 
+        self.constand_pad = nn.ConstantPad2d(padding, value=0.0)
+        self.mask_max_sum = kernel_size ** 2 * in_channels
         for param in self.mask_conv.parameters():
             torch.nn.init.constant_(param, 1)
             param.requires_grad = False
 
-    def forward(self, x, input_mask):
-        output = self.pconv(x)
-        output_mask = self.mask_conv(input_mask)
+    def forward(self, args):
+        x, input_mask = args
+
+        output = self.conv(x * input_mask)
+
+        input_mask = self.constand_pad(input_mask)
+        output_mask = self.mask_conv(input_mask)  # mask sums
+
+        # output_mask = output_mask.expand_as(output)
+
+        # conv window contain no mask pixels
         out_holes = output_mask != 0.0
-        output[out_holes] = output[out_holes] / torch.sum(output_mask)
+        # rescale by the ratio of unmasked pixels
+        scale = output_mask[out_holes] / self.mask_max_sum
 
+        output[out_holes] = output[out_holes] * scale
+        # contains mask pixels
         in_holes = output_mask == 0.0
-        output[in_holes].fill_(0.0)
+        output[in_holes] = 0
 
-        output_mask[out_holes].fill_(1.0)
-        output_mask[in_holes].fill_(0.0)
+        output_mask[out_holes] = 1
+        output_mask[in_holes] = 0
 
-        return output, output_mask
+        return output, output_mask  #[:, :1, :, :]
 
 
 def Partial_Conv_block(in_channels, out_channels, kernel_size, stride=1,

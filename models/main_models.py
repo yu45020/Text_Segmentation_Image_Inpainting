@@ -3,7 +3,7 @@ import math
 import torch
 from torch.utils.checkpoint import checkpoint
 
-from .BaseModels import BaseModule, Conv_block
+from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
 from torch import nn
 from .MobileNetV2 import MobileNetV2
 from collections import OrderedDict
@@ -11,8 +11,8 @@ from torch.nn import functional as F
 
 
 class MobileNetEncoder(MobileNetV2):
-    def __init__(self, pre_train_checkpoint=None, drop_last2=True):
-        super(MobileNetEncoder, self).__init__(drop_last2=drop_last2)
+    def __init__(self, pre_train_checkpoint=None, drop_last2=True, add_partial=False):
+        super(MobileNetEncoder, self).__init__(drop_last2=drop_last2, add_partial=add_partial)
         self.inverted_residual_setting = [
             # t, c, n, s, dial
             [1, 16, 1, 1, 1],
@@ -76,56 +76,89 @@ class ASP(BaseModule):
 
 
 class ImageInpainting(BaseModule):
-    def __init__(self):
+    def __init__(self, encoder_checkpoint=None):
         super(ImageInpainting, self).__init__()
-        pass
+        self.encoder = MobileNetEncoder(drop_last2=True, add_partial=True)
 
+        self.encoder_2_decoder = self.make_transitor(self.encoder.last_channel, 256, 3)
 
-class ImageInpaintingEncoder(BaseModule):
-    # use partial convolution to update masks
-    # and use pre-train backbone to extra features
-    # No back prop update is used
-    def __init__(self, encoder):
-        super(ImageInpaintingEncoder, self).__init__()
-        self.encoder = encoder
-        self.encoder.freeze_params(free_last_blocks=0)  # freeze all layers
-        self.mask_convs = self.make_mask_convs(encoder)
+        self.up_sampler1 = self.make_upsampler(256, 32)
+        self.decoder1 = self.make_decoder(32 + 32, 256)
 
-    def make_mask_convs(self, encoder):
-        channels = self.get_in_out_channels(encoder)
-        kernels = [7, 5, 5, 3, 3, 3, 3, 3]  # follow Mobile Net V2
-        strides = [2, 1, 2, 2, 2, 1, 1, 1]  # same
-        m = [nn.Conv2d(*i, k, s, padding=0, bias=False) for i, k, s in zip(channels, kernels, strides)]
-        out = nn.Sequential(*m)
-        for layer in out.children():
-            for param in layer.parameters():
-                torch.nn.init.constant_(param, 1)
-                param.requires_grad = False
-        return out
+        self.up_sampler2 = self.make_upsampler(256, 32)
+        self.decoder2 = self.make_decoder(32 + 24, 128)
 
-    @staticmethod
-    def get_in_out_channels(encoder):
-        blocks = [[encoder.features[0][0].in_channels, encoder.features[0][0].out_channels]]
-        for i in range(1, len(encoder.features)):
-            for layers in encoder.features[i][0].children():
-                in_channel = layers[0].in_channels
-                for layer in layers.children():
-                    if isinstance(layer, nn.Conv2d):
-                        out_channel = layer.out_channels
-                blocks.append([in_channel, out_channel])
-        return blocks
+        self.up_sampler3 = self.make_upsampler(128, 32)
+        self.decoder3 = self.make_decoder(32 + 16, 128)
 
-    def forward(self, x, input_mask):
-        assert x.size() == input_mask.size()
-        out_mask = []
-        for layer, mask_layer in zip(self.encoder.features.children(), self.mask_convs):
-            x = layer(x)
-            pad_size = (1 - mask_layer.stride[0] + mask_layer.kernel_size[0]) // 2
-            input_mask = nn.ZeroPad2d(pad_size)(input_mask)
-            input_mask = mask_layer(input_mask)
-            out_mask.append(input_mask)
-            print(x.size(), input_mask.size())
-        return x, out_mask
+        self.up_sampler4 = self.make_upsampler(128, 32)
+        self.out_conv = self.make_decoder(32 + 3, 3)
+        if encoder_checkpoint:
+            self.encoder.freeze_params(encoder_checkpoint, free_last_blocks=0)
+
+    def make_transitor(self, in_channel, out_channel, num_layers):
+        m = Partial_Conv_block(in_channels=in_channel, out_channels=48, kernel_size=1, stride=1,
+                               padding=0, dilation=1, groups=1, bias=False, BN=True, activation=nn.ReLU6())
+        out_c = 48
+        for _ in range(num_layers):
+            m.extend(Partial_Conv_block(in_channels=out_c, out_channels=out_channel, kernel_size=1, stride=1,
+                                        padding=0, dilation=1, groups=1, bias=False, BN=True, activation=nn.ReLU6()))
+            out_c = out_channel
+
+        return nn.Sequential(*m)
+
+    def make_upsampler(self, in_channel, out_channel):
+        m1 = nn.Sequential(*Conv_block(in_channel, out_channel, 1, 1, padding=0,
+                                       bias=False, BN=True, activation=None),
+                           nn.Upsample(scale_factor=2, mode='nearest'))
+
+        return m1
+
+    def make_decoder(self, in_channel, out_channel):
+        m = nn.Sequential(
+            *Partial_Conv_block(in_channels=in_channel, out_channels=out_channel, kernel_size=3, stride=1,
+                                padding=1, bias=True, BN=True, activation=nn.ReLU6()),
+            *Partial_Conv_block(in_channels=out_channel, out_channels=out_channel, kernel_size=3, stride=1,
+                                padding=1, bias=True, BN=True, activation=nn.ReLU6())
+        )
+        return m
+
+    def forward(self, args):
+        x, mask = args
+        out_mask = [mask]
+        out_x = [x]
+        for index, layer in enumerate(self.encoder.features):
+            x, mask = layer((x, mask))
+            if index in [1, 2, 3]:  # right before down scale in the encoder
+                out_x.append(x)
+                out_mask.append(mask)
+        x.size()
+        mask.size()
+        x, mask = self.encoder_2_decoder((x, mask))
+        x = self.up_sampler1(x)
+        mask = self.up_sampler1(mask)
+        x = torch.cat([x, out_x[-1]], dim=1)
+        mask = torch.cat([mask, out_mask[-1]], dim=1)
+
+        x, mask = self.decoder1((x, mask))
+        x = self.up_sampler2(x)
+        mask = self.up_sampler2(mask)
+        x = torch.cat([x, out_x[-2]], dim=1)
+        mask = torch.cat([mask, out_mask[-2]], dim=1)
+        x, mask = self.decoder2((x, mask))
+
+        x = self.up_sampler3(x)
+        mask = self.up_sampler3(mask)
+        x = torch.cat([x, out_x[-3]], dim=1)
+        mask = torch.cat([mask, out_mask[-3]], dim=1)
+        x, mask = self.decoder3((x, mask))
+
+        x = self.up_sampler4(x)
+        mask = self.up_sampler4(mask)
+        x = torch.cat([x, out_x[-4]], dim=1)
+        mask = torch.cat([mask, out_mask[-4]], dim=1)
+        x, mask = self.out_conv((x, mask))
+        return x
 
 
 class TextSegament(BaseModule):
