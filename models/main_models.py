@@ -1,20 +1,17 @@
-import math
-
 import torch
+from torch import nn
+from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint
 
-from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
-from torch import nn
+from .BaseModels import BaseModule, Conv_block, Partial_Conv_block, Mask_Conv_block
 from .MobileNetV2 import MobileNetV2
-from collections import OrderedDict
-from torch.nn import functional as F
 
 
 class MobileNetEncoder(MobileNetV2):
     def __init__(self, pre_train_checkpoint=None, drop_last2=True, add_partial=False):
         super(MobileNetEncoder, self).__init__(drop_last2=drop_last2, add_partial=add_partial)
         self.inverted_residual_setting = [
-            # t, c, n, s, dial
+            # t, c, n, s, dila
             [1, 16, 1, 1, 1],
             [6, 24, 2, 2, 1],
             [6, 32, 3, 2, 1],
@@ -28,7 +25,10 @@ class MobileNetEncoder(MobileNetV2):
 
     def freeze_params(self, pre_train_checkpoint=None, free_last_blocks=2):
         if pre_train_checkpoint:
-            self.load_state_dict(torch.load(pre_train_checkpoint))
+            if isinstance(pre_train_checkpoint, str):
+                self.load_state_dict(torch.load(pre_train_checkpoint))
+            else:
+                self.load_state_dict(pre_train_checkpoint)
             # the last 4 blocks are changed from stride of 2 to dilation of 2
         for i in range(len(self.features) - free_last_blocks):
             for params in self.features[i].parameters():
@@ -43,11 +43,11 @@ class ASP(BaseModule):
         self.asp = nn.Sequential(
             nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=1, stride=1, padding=0,
                                       bias=False, BN=True, activation=None)),
-            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=4, dilation=4,
-                                      bias=False, BN=True, activation=None)),
-            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=8, dilation=8,
+            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=6, dilation=6,
                                       bias=False, BN=True, activation=None)),
             nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=12, dilation=12,
+                                      bias=False, BN=True, activation=None)),
+            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=18, dilation=18,
                                       bias=False, BN=True, activation=None))
         )
 
@@ -78,20 +78,20 @@ class ASP(BaseModule):
 class ImageInpainting(BaseModule):
     def __init__(self, encoder_checkpoint=None):
         super(ImageInpainting, self).__init__()
-        self.encoder = MobileNetEncoder(drop_last2=True, add_partial=True)
+        self.encoder = MobileNetEncoder(drop_last2=True, add_partial=False)
 
-        self.encoder_2_decoder = self.make_transitor(self.encoder.last_channel, 256, 3)
+        self.encoder_2_decoder = self.make_transitor(self.encoder.last_channel, 128, 3)
 
-        self.up_sampler1 = self.make_upsampler(256, 32)
-        self.decoder1 = self.make_decoder(32 + 32, 256)
+        self.up_sampler1 = self.make_upsampler(128, 32)
+        self.decoder1 = self.make_decoder(32 + 32, 128)
 
-        self.up_sampler2 = self.make_upsampler(256, 32)
+        self.up_sampler2 = self.make_upsampler(128, 32)
         self.decoder2 = self.make_decoder(32 + 24, 128)
 
         self.up_sampler3 = self.make_upsampler(128, 32)
-        self.decoder3 = self.make_decoder(32 + 16, 128)
+        self.decoder3 = self.make_decoder(32 + 16, 64)
 
-        self.up_sampler4 = self.make_upsampler(128, 32)
+        self.up_sampler4 = self.make_upsampler(64, 32)
         self.out_conv = self.make_decoder(32 + 3, 3)
         if encoder_checkpoint:
             self.encoder.freeze_params(encoder_checkpoint, free_last_blocks=0)
@@ -124,6 +124,7 @@ class ImageInpainting(BaseModule):
         return m
 
     def forward(self, args):
+
         x, mask = args
         out_mask = [mask]
         out_x = [x]
@@ -132,8 +133,7 @@ class ImageInpainting(BaseModule):
             if index in [1, 2, 3]:  # right before down scale in the encoder
                 out_x.append(x)
                 out_mask.append(mask)
-        x.size()
-        mask.size()
+
         x, mask = self.encoder_2_decoder((x, mask))
         x = self.up_sampler1(x)
         mask = self.up_sampler1(mask)
@@ -180,14 +180,14 @@ class TextSegament(BaseModule):
                                             *Conv_block(64, 32, kernel_size=3, padding=1,
                                                         bias=False, BN=True, activation=nn.ReLU6()))
 
-        self.out_conv = nn.Sequential(*Conv_block(32, 4, kernel_size=3, padding=1,
+        self.out_conv = nn.Sequential(*Conv_block(32, 2, kernel_size=3, padding=1,
                                                   bias=False, BN=False, activation=None))
         self.softmax2d = nn.Softmax2d()  # to get mask
 
     def forward(self, x):
         for index, layer in enumerate(self.encoder.features.children()):
             x = layer(x)
-            if index == 3:
+            if index == 2:
                 layer_out4x = self.layer_4x_conv(x)
             else:
                 continue
@@ -203,7 +203,7 @@ class TextSegament(BaseModule):
     def forward_checkpoint(self, x):
         for index, layer in enumerate(self.encoder.features.children()):
             x = checkpoint(layer, x)
-            if index == 3:
+            if index == 2:
                 layer_out4x = checkpoint(self.layer_4x_conv, x)
 
         x = checkpoint(self.feature_pooling, x)
@@ -213,4 +213,88 @@ class TextSegament(BaseModule):
         x = checkpoint(self.smooth_4x_conv, x)
         x = F.upsample(x, scale_factor=4, mode='bilinear')
         x = checkpoint(self.out_conv, x)
+        return x
+
+
+class ImageInpainting(BaseModule):
+    def __init__(self, encoder_checkpoint=None):
+        super(ImageInpainting, self).__init__()
+
+        self.encoder = MobileNetEncoder(drop_last2=True)
+        self.encoder.freeze_params(encoder_checkpoint, free_last_blocks=0)  # fix all pre-trained
+        self.encoder_pconv = self.make_partial_conv()
+        self.shrink_last_mask = nn.Conv2d(self.encoder.last_channel, 256, kernel_size=1, bias=False)
+        self.feature_pooling = ASP(self.encoder.last_channel, out_channel=256)
+        self.encoder_2_decoder = nn.Sequential(*Conv_block(256 * 5, 256, kernel_size=1, padding=0,
+                                                           bias=False, BN=True, activation=nn.ReLU6()))
+
+        self.upsampler = self.make_upsampler()
+        self.decoder = self.make_decoder_pconv()
+
+        self.pre_out_pconv = nn.Sequential(*Partial_Conv_block(32 + 3, 64, 3, 1, 1, bias=False,
+                                                               BN=True, activation=nn.ReLU6()))
+        self.out_conv = nn.Conv2d(64, 3, kernel_size=3, padding=1, bias=False)
+
+    def make_partial_conv(self):
+        m = []
+        # follow the Mobile Net V2 structure
+        setting = [[0, 32, 0, 2, 1]]
+        setting.extend(self.encoder.inverted_residual_setting)
+        init_channel = 3
+        for t, c, n, s, dila in setting:
+            m.extend(Mask_Conv_block(init_channel, c, 3, stride=s,
+                                     padding=dila, dilation=dila))
+            init_channel = c
+        return nn.Sequential(*m)
+
+    def make_decoder_pconv(self):
+        m = []
+        channels = [256, 128, 128, 64]
+        init_channel = 256
+        extra_channels = [32, 24, 16, 3]
+        for i, j in zip(channels, extra_channels):
+            m.extend(Partial_Conv_block(init_channel, i, 3, 1, padding=1, bias=False,
+                                        BN=True, activation=nn.ReLU6()))
+            init_channel = 32 + j  # same as up-sampler
+        return nn.Sequential(*m)
+
+    def make_upsampler(self):
+        m = []
+        channels = [256, 128, 128, 64]
+        for i in channels:
+            m.extend([nn.Sequential(*Conv_block(i, 32, kernel_size=1, bias=False,
+                                                BN=True, activation=nn.ReLU6()),
+                                    nn.Upsample(scale_factor=2, mode='nearest'))
+                      ])
+        return nn.Sequential(*m)
+
+    def forward(self, args):
+        x, mask = args
+        out_x = [x]
+        out_mask = [mask]
+        for layer, pconv in zip(self.encoder.features, self.encoder_pconv):
+            x = layer(x * mask)
+            x, mask = pconv((x, mask))
+            out_x.append(x)
+            out_mask.append(mask)
+        # keep the layers that are right before stride/ dilation
+        sub = [0, 2, 3, 4]
+        out_mask = [out_mask[i] for i in sub]
+        out_x = [out_x[i] for i in sub]
+
+        # feature pooling
+        x = self.feature_pooling(x)
+        x = self.encoder_2_decoder(x)
+        mask = self.shrink_last_mask(mask)
+
+        # decoder part
+        for pconv, upscale in zip(self.decoder.children(), self.upsampler.children()):
+            x, mask = pconv((x, mask))
+            x = upscale(x)
+            mask = upscale(mask)
+            x = torch.cat([x, out_x.pop(-1)], dim=1)
+            mask = torch.cat([mask, out_mask.pop(-1)], dim=1)
+
+        x, mask = self.pre_out_pconv((x, mask))
+        x = self.out_conv(x)
         return x

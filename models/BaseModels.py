@@ -1,9 +1,9 @@
 import math
-import torch
-from contextlib import contextmanager
-from torch import nn
-from torch.utils.checkpoint import checkpoint_sequential, checkpoint
 import warnings
+from contextlib import contextmanager
+
+import torch
+from torch import nn
 
 warnings.simplefilter('ignore')
 
@@ -146,5 +146,55 @@ def Partial_Conv_block(in_channels, out_channels, kernel_size, stride=1,
                        BN=False, activation=None):
     m = PartialConvBlock(in_channels, out_channels, kernel_size, stride,
                          padding, dilation, groups, bias, BN, activation)
+
+    return [m]
+
+
+class MaskConvBlock(BaseModule):
+    # mask only
+    # mask is binary, 0 is masked point, 1 is not
+    # reference :
+    # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv
+    # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1):
+        super(MaskConvBlock, self).__init__()
+
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0, dilation=dilation,
+                                   bias=False)
+
+        self.constand_pad = nn.ConstantPad2d(padding, value=0.0)
+        self.mask_max_sum = kernel_size ** 2 * in_channels
+        for param in self.mask_conv.parameters():
+            torch.nn.init.constant_(param, 1)
+            param.requires_grad = False
+
+    def forward(self, args):
+        x, input_mask = args
+        input_mask = self.constand_pad(input_mask)
+        output_mask = self.mask_conv(input_mask)  # mask sums
+
+        # output_mask = output_mask.expand_as(output)
+
+        # conv window contain no mask pixels
+        out_holes = output_mask != 0.0
+        # rescale by the ratio of unmasked pixels
+        scale = output_mask[out_holes] / self.mask_max_sum
+
+        x[out_holes] = x[out_holes] * scale
+        # contains mask pixels
+        in_holes = output_mask == 0.0
+        x[in_holes] = 0
+
+        output_mask[out_holes] = 1
+        output_mask[in_holes] = 0
+
+        return x, output_mask  # [:, :1, :, :]
+
+
+def Mask_Conv_block(in_channels, out_channels, kernel_size, stride=1,
+                    padding=0, dilation=1):
+    m = MaskConvBlock(in_channels, out_channels, kernel_size, stride,
+                      padding, dilation)
 
     return [m]
