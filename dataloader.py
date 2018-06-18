@@ -1,18 +1,10 @@
 import glob
-import re
-import torch
-
-import glob
 import random
-from io import BytesIO
+import re
 from itertools import chain
 from multiprocessing.dummy import Pool as ThreadPool
 
 import torch
-from PIL import Image
-from torch.utils.data import DataLoader, Dataset
-from torchvision.transforms.functional import to_tensor
-from torch import nn
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
@@ -88,10 +80,11 @@ class ImageLoader(DataLoader):
 
         # ])
 
-    def img_transform(self, pil_img):
-        img = to_tensor(pil_img)
-        single_channel = img[0, :, :]  # either gray or Y from YCbCr
-        img = single_channel.expand(3, img.size(1), img.size(2))
+    @staticmethod
+    def img_transform(pil_img):
+        channels = pil_img.split()
+        img = to_tensor(channels[0])  # either gray or Y from YCbCr
+        img = img.expand(3, img.size(1), img.size(2))
         return img
 
     def batch_collector(self, batch):
@@ -112,3 +105,55 @@ class ImageLoader(DataLoader):
             clean_img_masks = clean_img_masks.cuda(async=True)
 
         return raw_imgs, clean_img_masks
+
+
+class InpaintingData(ImageLoader):
+    def __init__(self, dataset,
+                 batch_size=1,
+                 shuffle=True):
+        self.dataset = dataset
+        super(ImageLoader, self).__init__(dataset,
+                                          batch_size,
+                                          shuffle,
+                                          collate_fn=self.batch_collector)
+
+    @staticmethod
+    def add_random_mask(mask, length=5000):
+        # random walk
+        action_list = [[0, 1], [0, -1], [1, 0], [-1, 0]]
+        b, c, h, w = mask.size()
+        x = random.randint(h // 3, 4 * h // 5)
+        y = random.randint(w // 3, 4 * w // 5)
+        # x, y = random.randint(0, min(h, w)), random.randint(0, min(h, w))
+        for i in range(length):
+            step = random.choice(action_list)
+            x = min(h - 1, x + step[0])
+            y = min(w - 1, y + step[1])
+            mask[:, :, x, y] = 1
+        return mask
+
+    def batch_collector(self, batch):
+        raw_clean = batch
+        raw_imgs = [self.img_transform(i[0]) for i in raw_clean]
+        raw_imgs = torch.stack(raw_imgs, dim=0).contiguous()
+
+        clean_imgs = [self.img_transform(i[1]) for i in raw_clean]
+        clean_imgs = torch.stack(clean_imgs, dim=0).contiguous()
+
+        # usually use white to cover words, so words' pixels become 1 after subtraction, the rest are 0
+        clean_img_masks = torch.abs(clean_imgs - raw_imgs)
+        clean_img_masks = self.add_random_mask(clean_img_masks)  # add 1s in random position
+
+        # masks are marked as 0, the rest are 1
+        clean_img_masks = torch.where(clean_img_masks > 0.2,
+                                      torch.zeros_like(clean_img_masks),
+                                      torch.ones_like(clean_img_masks))
+
+        idx = clean_img_masks.long()
+        clean_img_masks[0][0]
+        idx[0][0][0]
+        if use_cuda:
+            raw_imgs = raw_imgs.cuda()
+            clean_img_masks = clean_img_masks.cuda(async=True)
+            clean_imgs = clean_imgs.cuda(async=True)
+        return raw_imgs, clean_img_masks, clean_imgs

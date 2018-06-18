@@ -1,10 +1,10 @@
-from dataloader import ImageSet, ImageLoader
-from models.TextSegamentation import TextSegament
-from torch import nn, optim
 import torch
-from models.TextSegamentation import TextSegament
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import optim
+
+from dataloader import ImageSet, ImageLoader
+from models.main_models import TextSegament
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor

@@ -270,6 +270,7 @@ class ImageInpainting(BaseModule):
 
     def forward(self, args):
         x, mask = args
+        residual = x
         out_x = [x]
         out_mask = [mask]
         for layer, pconv in zip(self.encoder.features, self.encoder_pconv):
@@ -296,5 +297,5 @@ class ImageInpainting(BaseModule):
             mask = torch.cat([mask, out_mask.pop(-1)], dim=1)
 
         x, mask = self.pre_out_pconv((x, mask))
-        x = self.out_conv(x)
-        return x
+        # x = self.out_conv(x)
+        return x + residual
