@@ -1,14 +1,15 @@
 # reference:
 # https://github.com/tonylins/pytorch-mobilenet-v2/blob/master/MobileNetV2.py
 # https://arxiv.org/pdf/1801.04381.pdf
-import re
+
+
+import math
 
 import torch
-
 from torch import nn
-import math
-from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
 from torch.utils.checkpoint import checkpoint
+
+from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
 
 
 class MobileNetV2(BaseModule):
@@ -38,7 +39,6 @@ class MobileNetV2(BaseModule):
             self.classifier = self.make_classifier(n_class)
         if init_weights:
             self.initialize_weights()
-
 
     def make_inverted_resblocks(self, settings, drop_last2, input_size=224):
         in_channel = int(32 * self.width_mult)
@@ -149,14 +149,11 @@ class InvertedResidual(BaseModule):
             return self.conv(x)
 
     def forward_checkpoint(self, x):
-        if self.res_connect:
-            return x + checkpoint(self.conv, x)
-        else:
-            return checkpoint(self.conv, x)
+        with torch.no_grad():
+            return self.forward(x)
 
 
-#
-#
+
 class PartialInvertedResidual(InvertedResidual):
     def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=Partial_Conv_block):
         super(PartialInvertedResidual, self).__init__(in_channel=in_channel,
@@ -173,19 +170,11 @@ class PartialInvertedResidual(InvertedResidual):
             out = out + x
 
             out_mask = out_mask + mask
-            out_mask = torch.clamp(out_mask, min=0, max=1)
+            # out_mask = torch.clamp(out_mask, min=0, max=1)
             return out, out_mask
         else:
             return self.conv(args)
 
     def forward_checkpoint(self, args):
-        if self.res_connect:
-            x, mask = args
-            out, out_mask = checkpoint(self.conv, (x, mask))
-            out = out + x
-
-            out_mask = out_mask + mask
-            out_mask = torch.clamp(out_mask, min=0, max=1)
-            return out, out_mask
-        else:
-            return checkpoint(self.conv, args)
+        with torch.no_grad():
+            return self.forward(args)

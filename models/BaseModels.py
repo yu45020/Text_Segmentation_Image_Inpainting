@@ -4,6 +4,7 @@ from contextlib import contextmanager
 
 import torch
 from torch import nn
+from torch.nn.functional import avg_pool2d, upsample
 
 warnings.simplefilter('ignore')
 
@@ -36,6 +37,14 @@ class BaseModule(nn.Module):
     def __init__(self):
         self.act_fn = None
         super(BaseModule, self).__init__()
+
+    def selu_init_params(self):
+        for i in self.modules():
+            if isinstance(i, nn.Conv2d):
+                i.weight.data.normal_(0.0, 1.0 / math.sqrt(i.weight.numel()))
+                if i.bias is not None:
+                    i.bias.data.fill_(0)
+
 
     def initialize_weights(self):
         for m in self.modules():
@@ -96,50 +105,33 @@ def Conv_block(in_channels, out_channels, kernel_size, stride=1,
 
 class PartialConvBlock(BaseModule):
     # mask is binary, 0 is masked point, 1 is not
-    # reference :
-    # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv
-    # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting
+
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True, BN=False, activation=None):
+                 padding=0, dilation=1, groups=1, bias=False, BN=True, activation=None):
         super(PartialConvBlock, self).__init__()
-        self.conv = nn.Sequential(*Conv_block(in_channels, out_channels, kernel_size, stride,
-                                              padding, dilation, groups, bias,
-                                              BN, activation))
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                              padding, dilation, groups, bias)
 
-        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0, dilation=dilation,
-                                   bias=False)
+        self.mask_conv = nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                                                 padding, dilation, groups, bias))
 
-        self.constand_pad = nn.ConstantPad2d(padding, value=0.0)
-        self.mask_max_sum = kernel_size ** 2 * in_channels
-        for param in self.mask_conv.parameters():
-            torch.nn.init.constant_(param, 1)
-            param.requires_grad = False
+        out = []
+        if BN:
+            out.append(nn.BatchNorm2d(out_channels))
+        if activation:
+            out.append(activation)
+        if len(out):
+            self.out = nn.Sequential(*out)
 
     def forward(self, args):
-        x, input_mask = args
-
-        output = self.conv(x * input_mask)
-
-        input_mask = self.constand_pad(input_mask)
-        output_mask = self.mask_conv(input_mask)  # mask sums
-
-        # output_mask = output_mask.expand_as(output)
-
-        # conv window contain no mask pixels
-        out_holes = output_mask != 0.0
-        # rescale by the ratio of unmasked pixels
-        scale = output_mask[out_holes] / self.mask_max_sum
-
-        output[out_holes] = output[out_holes] * scale
-        # contains mask pixels
-        in_holes = output_mask == 0.0
-        output[in_holes] = 0
-
-        output_mask[out_holes] = 1
-        output_mask[in_holes] = 0
-
-        return output, output_mask  #[:, :1, :, :]
-
+        x, mask = args
+        feature = self.conv(x)
+        mask = self.mask_conv(mask)
+        gate = torch.sigmoid(mask)
+        x = feature * gate
+        if hasattr(self, 'out'):
+            x = self.out(x)
+        return x, mask
 
 def Partial_Conv_block(in_channels, out_channels, kernel_size, stride=1,
                        padding=0, dilation=1, groups=1, bias=True,
@@ -150,51 +142,20 @@ def Partial_Conv_block(in_channels, out_channels, kernel_size, stride=1,
     return [m]
 
 
-class MaskConvBlock(BaseModule):
-    # mask only
-    # mask is binary, 0 is masked point, 1 is not
-    # reference :
-    # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv
-    # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting
-    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1):
-        super(MaskConvBlock, self).__init__()
+class DoubleAvdPool(nn.AvgPool2d):
+    def __init__(self, kernel_size):
+        super(DoubleAvdPool, self).__init__(kernel_size=kernel_size)
+        self.kernel_size = kernel_size
 
-        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=0, dilation=dilation,
-                                   bias=False)
-
-        self.constand_pad = nn.ConstantPad2d(padding, value=0.0)
-        self.mask_max_sum = kernel_size ** 2 * in_channels
-        for param in self.mask_conv.parameters():
-            torch.nn.init.constant_(param, 1)
-            param.requires_grad = False
-
-    def forward(self, args):
-        x, input_mask = args
-        input_mask = self.constand_pad(input_mask)
-        output_mask = self.mask_conv(input_mask)  # mask sums
-
-        # output_mask = output_mask.expand_as(output)
-
-        # conv window contain no mask pixels
-        out_holes = output_mask != 0.0
-        # rescale by the ratio of unmasked pixels
-        scale = output_mask[out_holes] / self.mask_max_sum
-
-        x[out_holes] = x[out_holes] * scale
-        # contains mask pixels
-        in_holes = output_mask == 0.0
-        x[in_holes] = 0
-
-        output_mask[out_holes] = 1
-        output_mask[in_holes] = 0
-
-        return x, output_mask  # [:, :1, :, :]
+    def forward(self, *args):
+        return tuple(map(lambda x: avg_pool2d(x, kernel_size=self.kernel_size), *args))
 
 
-def Mask_Conv_block(in_channels, out_channels, kernel_size, stride=1,
-                    padding=0, dilation=1):
-    m = MaskConvBlock(in_channels, out_channels, kernel_size, stride,
-                      padding, dilation)
+class DoubleUpSample(nn.Upsample):
+    def __init__(self, scale_factor, mode):
+        super(DoubleUpSample, self).__init__(scale_factor=scale_factor, mode=mode)
+        self.scale_factor = scale_factor
+        self.mode = mode
 
-    return [m]
+    def forward(self, *args):
+        return tuple(map(lambda x: upsample(x, scale_factor=self.scale_factor, mode=self.mode), *args))
