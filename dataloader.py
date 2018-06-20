@@ -21,9 +21,12 @@ class ImageSet(Dataset):
     def __init__(self, img_folder,
                  max_img=100,
                  augment_per_img=2,
-                 img_size=(320, 480)):
+                 img_size=(320, 480),
+                 pil_color='YCbCr'):
         assert all(x % 16 == 0 for x in img_size), 'Image size must be multiple of 16'
+        assert pil_color in ['YCbCr', 'RGB', "L"]
         self.img_size = img_size
+        self.pil_color_map = pil_color
         self.augment_per_img = augment_per_img
         self.images = self.process_image(img_folder, max_img)
         print("Find {} images. ".format(self.__len__()))
@@ -42,14 +45,14 @@ class ImageSet(Dataset):
 
     def _process_image(self, img_file):
         # img_raw = Image.open(img_file).convert("RGB")
-        img_raw = Image.open(img_file).convert("YCbCr")
+        img_raw = Image.open(img_file).convert(self.pil_color_map)
         img_clean = Image.open(re.sub("raw", 'clean', img_file))
         imgs = [self.image_augment((img_raw, img_clean)) for _ in range(self.augment_per_img)]
         return imgs
 
     def image_augment(self, pil_imgs):
         raw, clean = pil_imgs
-        i, j, h, w = transforms.RandomResizedCrop.get_params(raw, scale=(0.5, 1.0), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = transforms.RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
         raw = resized_crop(raw, i, j, h, w, size=self.img_size)
         clean = resized_crop(clean, i, j, h, w, self.img_size)
         return raw, clean
@@ -132,6 +135,13 @@ class InpaintingData(ImageLoader):
             mask[:, :, x, y] = 1
         return mask
 
+    @staticmethod
+    def img_transform(pil_img):
+        channels = pil_img.split()
+        img = to_tensor(channels[0])  # either gray or Y from YCbCr
+        img = img.expand(3, img.size(1), img.size(2))
+        return img
+
     def batch_collector(self, batch):
         raw_clean = batch
         raw_imgs = [self.img_transform(i[0]) for i in raw_clean]
@@ -149,11 +159,11 @@ class InpaintingData(ImageLoader):
                                       torch.zeros_like(clean_img_masks),
                                       torch.ones_like(clean_img_masks))
 
-        idx = clean_img_masks.long()
-        clean_img_masks[0][0]
-        idx[0][0][0]
+        clean_img_masks = clean_img_masks[:, :1, :, :].contiguous()
+        stacked_imgs = [torch.cat([i, j]) for i, j in zip(raw_imgs, clean_img_masks)]
+        stacked_imgs = torch.stack(stacked_imgs, dim=0)
         if use_cuda:
-            raw_imgs = raw_imgs.cuda()
-            clean_img_masks = clean_img_masks.cuda(async=True)
+            stacked_imgs = stacked_imgs.cuda()
             clean_imgs = clean_imgs.cuda(async=True)
-        return raw_imgs, clean_img_masks, clean_imgs
+            # [img, mask],  mask,
+        return stacked_imgs, stacked_imgs[:, 3:4, :, :], clean_imgs

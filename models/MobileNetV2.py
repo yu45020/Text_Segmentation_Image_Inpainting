@@ -2,7 +2,6 @@
 # https://github.com/tonylins/pytorch-mobilenet-v2/blob/master/MobileNetV2.py
 # https://arxiv.org/pdf/1801.04381.pdf
 
-
 import math
 
 import torch
@@ -13,8 +12,7 @@ from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
 
 
 class MobileNetV2(BaseModule):
-    def __init__(self, drop_last2=True, init_weights=False, width_mult=1,
-                 n_class=1000, input_size=224, add_partial=False):
+    def __init__(self, init_weights=False, width_mult=1, add_partial=False):
 
         super(MobileNetV2, self).__init__()
         self.add_partial = add_partial
@@ -33,16 +31,14 @@ class MobileNetV2(BaseModule):
             [6, 320, 1, 1, 1],
         ]
         self.last_channel = 0  # last one is avg pool
-        self.features = self.make_inverted_resblocks(self.inverted_residual_setting,
-                                                     drop_last2, input_size)
-        if not drop_last2:
-            self.classifier = self.make_classifier(n_class)
+        self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
+
         if init_weights:
             self.initialize_weights()
 
-    def make_inverted_resblocks(self, settings, drop_last2, input_size=224):
+    def make_inverted_resblocks(self, settings):
         in_channel = int(32 * self.width_mult)
-        last_channel = int(1280 * self.width_mult) if self.width_mult > 1 else 1280
+
         # first_layer
         features = [nn.Sequential(*self.conv_block(3, in_channel, kernel_size=3, stride=2,
                                                    padding=1, bias=False,
@@ -60,20 +56,7 @@ class MobileNetV2(BaseModule):
             features.append(nn.Sequential(*block))
         # last layer
         self.last_channel = out_channel
-
-        if not drop_last2:
-            features.extend(self.conv_block(in_channel, last_channel, 1, 1, 0, bias=False,
-                                            BN=True, activation=nn.ReLU6()))
-            features.append(nn.AvgPool2d(input_size // 32))
-            self.last_channel = last_channel
         return nn.Sequential(*features)
-
-    def make_classifier(self, n_class):
-        m = nn.Sequential(
-            nn.Dropout(),
-            nn.Linear(self.last_channel, n_class)
-        )
-        return m
 
     def initialize_weights(self):
         for m in self.modules():
@@ -112,11 +95,6 @@ class MobileNetV2(BaseModule):
     def forward_checkpoint(self, x):
         with self.set_activation_inplace():
             return checkpoint(self.forward, x)
-
-    def forward_classifier(self, x):
-        x = self.features(x)
-        x = x.view(-1, self.last_channel)
-        return self.classifier(x)
 
 
 class InvertedResidual(BaseModule):

@@ -8,6 +8,7 @@ from torch.nn import functional as F
 
 # copy from  https://github.com/clcarwin/focal_loss_pytorch
 class FocalLoss(nn.Module):
+    # alpha=0.75 gives the best for this project
     def __init__(self, gamma=2.0, alpha=0.25, size_average=True):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
