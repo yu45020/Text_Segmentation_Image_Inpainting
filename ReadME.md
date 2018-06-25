@@ -25,6 +25,7 @@ To generate training data, I use two copies of images: one is the origin, and th
 Special notes on training the model: The model runs less than a second with 50  512x512 images  in Nvidia P-100. The run time bottleneck will probably lay in CPU speed. Try to get more CPUs and large memory when setting ```num_workers``` in PyTOrch's dataloader. 8 workers takes around 29 GB memory. However, I use PIL to process images and find CPUS always hand up for few seconds in every epochs. 
 
 The model is trained on black/white images, but it also works for color images. 
+
 Example:
 ![img](ReadME_imgs/examle.jpg)
 * The model has not converged yet after 10 hours of training. 
