@@ -2,11 +2,14 @@
 # https://arxiv.org/pdf/1708.02002.pdf
 
 import torch
+import torchvision
 from torch import nn
 from torch.nn import functional as F
 
-
 # copy from  https://github.com/clcarwin/focal_loss_pytorch
+from models.BaseModels import BaseModule
+
+
 class FocalLoss(nn.Module):
     # alpha=0.75 gives the best for this project
     def __init__(self, gamma=2.0, alpha=0.25, size_average=True):
@@ -44,22 +47,6 @@ class FocalLoss(nn.Module):
             return loss.mean()
         else:
             return loss.sum()
-
-
-def gram_matrix(feat):
-    # https://github.com/pytorch/examples/blob/master/fast_neural_style/neural_style/utils.py
-    (b, ch, h, w) = feat.size()
-    feat = feat.view(b, ch, h * w)
-    feat_t = feat.transpose(1, 2)
-    gram = torch.bmm(feat, feat_t) / (ch * h * w)
-    return gram
-
-
-def total_variation_loss(image):
-    # shift one pixel and get difference (for both x and y direction)
-    loss = torch.mean(torch.abs(image[:, :, :, :-1] - image[:, :, :, 1:])) + \
-           torch.mean(torch.abs(image[:, :, :-1, :] - image[:, :, 1:, :]))
-    return loss
 
 
 class InapintingLoss(nn.Module):
@@ -115,17 +102,36 @@ class FeatureExtractor(nn.Module):
         return out
 
 
-class FeatureExtractor(nn.Module):
-    def __init__(self, encoder, feature_range=3):
-        super(FeatureExtractor, self).__init__()
-        self.layers = nn.Sequential(*[encoder.features[i] for i in range(feature_range)])
-        for layer in self.layers:
-            for param in layer.parameters():
-                param.requires_grad = False
+class Vgg19Extractor(BaseModule):
+    def __init__(self, pretrained=True):
+        super(Vgg19Extractor, self).__init__()
+        vgg19 = torchvision.models.vgg16(pretrained=pretrained)
+        feature1 = nn.Sequential(*vgg19.features[:5])
+        feature2 = nn.Sequential(*vgg19.features[5:10])
+        feature3 = nn.Sequential(*vgg19.features[10:17])
+        self.features = nn.Sequential(*[feature1, feature2, feature3])
+        for param in self.features.parameters():
+            param.requires_grad = False
 
-    def forward(self, x):
-        out = []
-        for layer in self.layers:
-            x = layer(x)
-            out.append(x)
-        return out
+    def forward(self, img):
+        result = []
+        for layer in self.features.children():
+            img = layer(img)
+            result.append(img)
+        return result
+
+
+def gram_matrix(feat):
+    # https://github.com/pytorch/examples/blob/master/fast_neural_style/neural_style/utils.py
+    (b, ch, h, w) = feat.size()
+    feat = feat.view(b, ch, h * w)
+    feat_t = feat.transpose(1, 2)
+    gram = torch.bmm(feat, feat_t) / (ch * h * w)
+    return gram
+
+
+def total_variation_loss(image):
+    # shift one pixel and get difference (for both x and y direction)
+    loss = torch.mean(torch.abs(image[:, :, :, :-1] - image[:, :, :, 1:])) + \
+           torch.mean(torch.abs(image[:, :, :-1, :] - image[:, :, 1:, :]))
+    return loss

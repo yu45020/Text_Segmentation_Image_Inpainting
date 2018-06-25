@@ -1,124 +1,148 @@
 import glob
+import os
 import random
 import re
 from itertools import chain
+from multiprocessing import cpu_count
 from multiprocessing.dummy import Pool as ThreadPool
 
 import torch
+from PIL import Image
+from torch import nn
+from torch.nn.functional import pad
+from torch.utils.data import Dataset, DataLoader
+from torchvision.transforms import ColorJitter, ToTensor, RandomResizedCrop, Compose, Normalize, transforms
+from torchvision.transforms.functional import resized_crop, to_tensor
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
 LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 Tensor = FloatTensor
-
-from PIL import Image
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
-from torchvision.transforms.functional import resized_crop, to_tensor
+"""
+Filter difference in brightness, to some degree. 
+If this value is set very high, say 0.8, some words are hard to detect;
+if too small, say <0.1, the mask may have noisy white points, and the model will fail to converge. 
+Recommend to generate masks to check the optimal value
+"""
+brightness_filter = 0.3  # in [0,1]
 
 
 class ImageSet(Dataset):
-    def __init__(self, img_folder,
-                 max_img=100,
-                 augment_per_img=2,
-                 img_size=(320, 480),
-                 pil_color='YCbCr'):
-        assert all(x % 16 == 0 for x in img_size), 'Image size must be multiple of 16'
-        assert pil_color in ['YCbCr', 'RGB', "L"]
-        self.img_size = img_size
-        self.pil_color_map = pil_color
-        self.augment_per_img = augment_per_img
-        self.images = self.process_image(img_folder, max_img)
-        print("Find {} images. ".format(self.__len__()))
-
-    def process_image(self, img_folder, max_img):
-        raw_files = glob.glob(img_folder + "raw/*", recursive=True)
-        if len(raw_files) > max_img:
-            raw_files = random.choices(raw_files, k=max_img)
-        assert len(raw_files) > 0
-        pool = ThreadPool(4)
-        patch_grids = pool.map(self._process_image, raw_files)
-        pool.close()
-        pool.join()
-
-        return list(chain.from_iterable(patch_grids))
-
-    def _process_image(self, img_file):
-        # img_raw = Image.open(img_file).convert("RGB")
-        img_raw = Image.open(img_file).convert(self.pil_color_map)
-        img_clean = Image.open(re.sub("raw", 'clean', img_file))
-        imgs = [self.image_augment((img_raw, img_clean)) for _ in range(self.augment_per_img)]
-        return imgs
-
-    def image_augment(self, pil_imgs):
-        raw, clean = pil_imgs
-        i, j, h, w = transforms.RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
-        raw = resized_crop(raw, i, j, h, w, size=self.img_size)
-        clean = resized_crop(clean, i, j, h, w, self.img_size)
-        return raw, clean
+    def __init__(self, img_folder, max_img=False):
+        # get raw images
+        self.images = glob.glob(os.path.join(img_folder, "raw/*"), recursive=True)
+        assert len(self.images) > 0
+        self.max_img = max_img
+        print("Find {} images. ".format(len(self.images)))
 
     def __len__(self):
-        return len(self.images)
+        return self.max_img
 
     def __getitem__(self, item):
-        # (raw, clean)
-        return self.images[item]
+        img_file = random.choice(self.images)
+        # avoid multiprocessing on the same image
+        img_raw_ = Image.open(img_file).convert('RGB')
+        img_raw = Image.new('RGB', img_raw_.size)
+        img_core = img_raw_.getdata()
+        img_raw.putdata(img_core)
+
+        img_clean_ = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
+        img_clean = Image.new("RGB", img_clean_.size)
+        img_core_ = img_clean_.getdata()
+        img_clean.putdata(img_core_)
+        return img_raw, img_clean
 
 
-class ImageLoader(DataLoader):
+class MaskLoader(DataLoader):
+    # mask: 1 is masked word; 0 is background
     def __init__(self, dataset,
-                 batch_size=1,
-                 shuffle=True):
+                 batch_size=2,
+                 shuffle=True,
+                 img_size=(512, 512),
+                 num_workers=0
+                 ):
+        super(MaskLoader, self).__init__(dataset,
+                                         batch_size,
+                                         shuffle,
+                                         num_workers=num_workers,
+                                         collate_fn=self.batch_collector)
+
+        assert all(x % 16 == 0 for x in img_size), 'Image size must be multiple of 16'
+        self.img_size = img_size
         self.dataset = dataset
-        super(ImageLoader, self).__init__(dataset,
-                                          batch_size,
-                                          shuffle,
-                                          collate_fn=self.batch_collector)
-        # self.img_transform = transforms.Compose([
-        #     transforms.ToTensor(),
+        self.color_jitter = ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
+
+        # MobileNet V2 pre-train checkpoint needs to normalize image
         # https://github.com/tonylins/pytorch-mobilenet-v2/issues/9
-        # mobilenet v2 is pre-trained on ImageNet
-        # transforms.Normalize(mean=[0.485, 0.456, 0.406],
-        #                      std=[0.229, 0.224,0.225]),
-
-        # ])
-
-    @staticmethod
-    def img_transform(pil_img):
-        channels = pil_img.split()
-        img = to_tensor(channels[0])  # either gray or Y from YCbCr
-        img = img.expand(3, img.size(1), img.size(2))
-        return img
+        self.transformer = Compose([ToTensor(),
+                                    Normalize(mean=[0.485, 0.456, 0.406],
+                                              std=[0.229, 0.224, 0.225])])
 
     def batch_collector(self, batch):
-        raw_clean = batch
-        raw_imgs = [self.img_transform(i[0]) for i in raw_clean]
+        raw_clean = self.image_augment(batch)
+
+        raw_imgs = [i[0] for i in raw_clean]
         raw_imgs = torch.stack(raw_imgs, dim=0).contiguous()
 
-        clean_imgs = [self.img_transform(i[1]) for i in raw_clean]
-        clean_imgs = torch.stack(clean_imgs, dim=0).contiguous()
-        clean_img_masks = torch.abs(clean_imgs - raw_imgs)  # usually use white to cover words
-        clean_img_masks = clean_img_masks[:, 0, :, :]
-        clean_img_masks = torch.where(clean_img_masks > 0.,
-                                      torch.ones_like(clean_img_masks),
-                                      torch.zeros_like(clean_img_masks))
-        clean_img_masks = clean_img_masks.long()
-        if use_cuda:
-            raw_imgs = raw_imgs.cuda()
-            clean_img_masks = clean_img_masks.cuda(async=True)
+        mask_imgs = [i[1] for i in raw_clean]
+        # masks are in single channel
+        mask_imgs = torch.stack(mask_imgs, dim=0).contiguous()
 
-        return raw_imgs, clean_img_masks
+        # clean_img_masks = torch.abs(clean_imgs - raw_imgs)  # usually use white to cover words
+        # clean_img_masks = clean_img_masks[:, 0, :, :]
+        # clean_img_masks = torch.where(clean_img_masks > brightness_filter,  # filter difference in brightness
+        #                               torch.ones_like(clean_img_masks),
+        #                               torch.zeros_like(clean_img_masks))
+        # clean_img_masks = clean_img_masks.long()
+        # if use_cuda:
+        #     raw_imgs = raw_imgs.cuda()
+        #     mask_imgs = mask_imgs.cuda(async=True)
+
+        return raw_imgs, mask_imgs
+
+    def image_augment(self, pil_imgs):
+        with ThreadPool(cpu_count()) as p:
+            out = p.map(self._image_augment, pil_imgs)
+        return out
+
+    def _image_augment(self, pil_img):
+        raw, clean = pil_img
+        # crop then resize
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.1, 2.0), ratio=(3. / 4., 4. / 3.))
+        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size)
+        clean_img = resized_crop(clean, i, j, h, w, self.img_size)
+
+        # get mask before further image augment
+        mask_tensor = self.get_mask(raw_img, clean_img)
+
+        # add color noise
+        raw_img = self.color_jitter(raw_img)
+        # to tensor
+        raw_img = self.transformer(raw_img)
+        return raw_img, mask_tensor
+
+    @staticmethod
+    def get_mask(raw_pil, clean_pil):
+        raw_tensor = to_tensor(raw_pil)
+        clean_tensor = to_tensor(clean_pil)
+        mask = torch.abs(raw_tensor - clean_tensor)  # usually use white to cover words
+        mask = mask[0, :, :]  # single channel
+        mask = torch.where(mask > brightness_filter,  # filter difference in brightness
+                           torch.ones_like(mask),
+                           torch.zeros_like(mask))
+        return mask.long()
 
 
-class InpaintingData(ImageLoader):
+class InpaintingData(MaskLoader):
     def __init__(self, dataset,
-                 batch_size=1,
+                 batch_size=2,
                  shuffle=True):
+        super(MaskLoader, self).__init__(dataset,
+                                         batch_size,
+                                         shuffle,
+                                         )
+
         self.dataset = dataset
-        super(ImageLoader, self).__init__(dataset,
-                                          batch_size,
-                                          shuffle,
-                                          collate_fn=self.batch_collector)
 
     @staticmethod
     def add_random_mask(mask, length=5000):
@@ -135,15 +159,8 @@ class InpaintingData(ImageLoader):
             mask[:, :, x, y] = 1
         return mask
 
-    @staticmethod
-    def img_transform(pil_img):
-        channels = pil_img.split()
-        img = to_tensor(channels[0])  # either gray or Y from YCbCr
-        img = img.expand(3, img.size(1), img.size(2))
-        return img
-
     def batch_collector(self, batch):
-        raw_clean = batch
+        raw_clean = self.process_images(batch)
         raw_imgs = [self.img_transform(i[0]) for i in raw_clean]
         raw_imgs = torch.stack(raw_imgs, dim=0).contiguous()
 
@@ -155,7 +172,7 @@ class InpaintingData(ImageLoader):
         clean_img_masks = self.add_random_mask(clean_img_masks)  # add 1s in random position
 
         # masks are marked as 0, the rest are 1
-        clean_img_masks = torch.where(clean_img_masks > 0.2,
+        clean_img_masks = torch.where(clean_img_masks > brightness_filter,  # filter difference in brightness
                                       torch.zeros_like(clean_img_masks),
                                       torch.ones_like(clean_img_masks))
 
@@ -167,3 +184,64 @@ class InpaintingData(ImageLoader):
             clean_imgs = clean_imgs.cuda(async=True)
             # [img, mask],  mask,
         return stacked_imgs, stacked_imgs[:, 3:4, :, :], clean_imgs
+
+
+class EvaluateSet(Dataset):
+    def __init__(self, img_folder=None):
+        self.eval_imgs = [glob.glob(img_folder + "**/*.{}".format(i), recursive=True) for i in ['jpg', 'jpeg', 'png']]
+        self.eval_imgs = list(chain.from_iterable(self.eval_imgs))
+        self.transformer = Compose([ToTensor(),
+                                    transforms.Lambda(lambda x: x.unsqueeze(0))
+                                    ])
+        self.normalizer = Compose([transforms.Lambda(lambda x: x.squeeze(0)),
+                                   Normalize(mean=[0.485, 0.456, 0.406],
+                                             std=[0.229, 0.224, 0.225]),
+                                   transforms.Lambda(lambda x: x.unsqueeze(0))
+                                   ])
+        print("Find {} test images. ".format(len(self.eval_imgs)))
+
+    def __len__(self):
+        return len(self.eval_imgs)
+
+    def __getitem__(self, item):
+        img = Image.open(self.eval_imgs[item]).convert("RGB")
+        return self.resize_pad_tensor(img), self.eval_imgs[item]
+
+    def resize_pad_tensor(self, pil_img):
+        origin = self.transformer(pil_img)
+        fix_len = 512
+        long = max(pil_img.size)
+        ratio = fix_len / long
+        new_size = tuple(map(lambda x: int(x * ratio), pil_img.size))
+        img = pil_img.resize(new_size, Image.LANCZOS)
+        # img = pil_img
+        img = self.transformer(img)
+
+        _, _, h, w = img.size()
+        if fix_len > w:
+
+            boarder_pad = (0, fix_len - w, 0, 0)
+        else:
+
+            boarder_pad = (0, 0, 0, fix_len - h)
+
+        img = pad(img, boarder_pad, value=0)
+        mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
+        return self.normalizer(img), origin, mask_resizer
+
+    @staticmethod
+    def resize_mask(padded_values, origin_size):
+        unpad = tuple(map(lambda x: -x, padded_values))
+        upsampler = nn.Upsample(size=tuple(reversed(origin_size)), mode='bilinear', align_corners=False)
+        m = Compose([
+            torch.nn.ZeroPad2d(unpad),
+            transforms.Lambda(lambda x: upsampler(x.float())),
+            transforms.Lambda(lambda x: x.expand(-1, 3, -1, -1) > 0)
+        ])
+        return m
+
+#
+# transforms.Lambda(lambda x: x.squeeze(1).float()),
+# ToPILImage(),
+# Resize(tuple(reversed(origin_size))),  # torchvision uses (h, w)
+# ToTensor(),

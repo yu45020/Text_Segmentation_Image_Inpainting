@@ -12,9 +12,12 @@ from .MobileNetV2 import MobileNetV2
 
 
 class MobileNetEncoder(MobileNetV2):
-    def __init__(self, pre_train_checkpoint=None, add_partial=False):
-        super(MobileNetEncoder, self).__init__(add_partial=add_partial)
+    def __init__(self, pre_train_checkpoint=None, free_last_blocks=None, add_partial=False, activation=nn.ReLU6(),
+                 bias=False, width_mult=1):
+        super(MobileNetEncoder, self).__init__(add_partial=add_partial, width_mult=width_mult)
         self.add_partial = add_partial
+        self.bias = bias
+        self.act_fn = activation
         self.inverted_residual_setting = [
             # t, c, n, s, dila
             [1, 16, 1, 1, 1],
@@ -26,18 +29,27 @@ class MobileNetEncoder(MobileNetV2):
             [6, 320, 1, 1, 2],  # origin:  [6, 320, 1, 1]   out stride 32x
         ]
         self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
-        self.freeze_params(pre_train_checkpoint)
-
-    def freeze_params(self, pre_train_checkpoint=None, free_last_blocks=2):
         if pre_train_checkpoint:
             if isinstance(pre_train_checkpoint, str):
                 self.load_state_dict(torch.load(pre_train_checkpoint, map_location='cpu'))
             else:
                 self.load_state_dict(pre_train_checkpoint)
-            # the last 4 blocks are changed from stride of 2 to dilation of 2
+            print("Encoder check point is loaded")
+        else:
+            print("No check point for the encoder is loaded. ")
+        if free_last_blocks:
+            self.freeze_params(free_last_blocks)
+
+        else:
+            print("All layers in the encoders are re-trained. ")
+
+    def freeze_params(self, free_last_blocks=2):
+        # the last 4 blocks are changed from stride of 2 to dilation of 2
         for i in range(len(self.features) - free_last_blocks):
             for params in self.features[i].parameters():
                 params.requires_grad = False
+        print("{}/{} layers in the encoder are freezed.".format(len(self.features) - free_last_blocks,
+                                                                len(self.features)))
 
 
 class ASP(BaseModule):
@@ -61,7 +73,8 @@ class ASP(BaseModule):
         self.img_pooling_2 = nn.Sequential(
             *Conv_block(in_channel, out_channel, kernel_size=1, bias=False, BN=True, activation=None))
 
-        self.initialize_weights()
+        # self.initialize_weights()
+        # self.selu_init_params()
 
     def forward(self, x):
         avg_pool = self.img_pooling_1(x)
@@ -81,27 +94,37 @@ class ASP(BaseModule):
 
 
 class TextSegament(BaseModule):
-    def __init__(self, encoder_checkpoint=None):
+    def __init__(self, encoder_checkpoint=None, free_last_blocks=None):
         super(TextSegament, self).__init__()
+        self.act_fn = nn.SELU()
+        self.bias = True
 
-        self.encoder = MobileNetEncoder(encoder_checkpoint,
-                                        drop_last2=True)  # may need to retrain the last 4 layers
         self.layer_4x_conv = nn.Sequential(*Conv_block(24, 128, kernel_size=3, padding=1,
-                                                       bias=False, BN=True, activation=nn.ReLU6()))
-        self.feature_pooling = ASP(self.encoder.last_channel, out_channel=256)
+                                                       bias=self.bias, BN=True, activation=self.act_fn))
+        # self.encoder.last_channel --|
+        self.feature_pooling = ASP(320, out_channel=256)
+
+        # decoder
         self.transition_2_decoder = nn.Sequential(*Conv_block(256 * 5, 128, kernel_size=1,
-                                                              bias=False, BN=True, activation=nn.ReLU6()))
+                                                              bias=self.bias, BN=True, activation=self.act_fn))
 
         self.smooth_4x_conv = nn.Sequential(*Conv_block(128 * 2, 64, kernel_size=1,
-                                                        bias=False, BN=True, activation=nn.ReLU6()),
+                                                        bias=self.bias, BN=True, activation=self.act_fn),
                                             *Conv_block(64, 64, kernel_size=3, padding=1, groups=64,
-                                                        bias=False, BN=True, activation=nn.ReLU6()),
+                                                        bias=self.bias, BN=True, activation=self.act_fn),
                                             *Conv_block(64, 32, kernel_size=3, padding=1,
-                                                        bias=False, BN=True, activation=nn.ReLU6()))
+                                                        bias=self.bias, BN=True, activation=self.act_fn))
 
         self.out_conv = nn.Sequential(*Conv_block(32, 2, kernel_size=3, padding=1,
-                                                  bias=False, BN=False, activation=None))
+                                                  bias=self.bias, BN=False, activation=None))
         self.softmax2d = nn.Softmax2d()  # to get mask
+        if isinstance(self.act_fn, torch.nn.SELU):
+            self.selu_init_params()
+        else:
+            self.initialize_weights()
+        # use the pre-train weights to initialize the model
+        self.encoder = MobileNetEncoder(encoder_checkpoint, free_last_blocks,
+                                        activation=nn.ReLU6(), bias=False)  # may need to retrain the last 4 layers
 
     def forward(self, x):
         for index, layer in enumerate(self.encoder.features.children()):
@@ -120,17 +143,5 @@ class TextSegament(BaseModule):
         return x
 
     def forward_checkpoint(self, x):
-        for index, layer in enumerate(self.encoder.features.children()):
-            x = checkpoint(layer, x)
-            if index == 2:
-                layer_out4x = checkpoint(self.layer_4x_conv, x)
-
-        x = checkpoint(self.feature_pooling, x)
-        x = self.transition_2_decoder(x)
-        x = F.upsample(x, scale_factor=4, mode='bilinear')
-        x = torch.cat([x, layer_out4x], dim=1)
-        x = checkpoint(self.smooth_4x_conv, x)
-        x = F.upsample(x, scale_factor=4, mode='bilinear')
-        x = checkpoint(self.out_conv, x)
-        return x
-
+        with torch.no_grad():
+            return self.forward(x)

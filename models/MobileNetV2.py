@@ -2,23 +2,23 @@
 # https://github.com/tonylins/pytorch-mobilenet-v2/blob/master/MobileNetV2.py
 # https://arxiv.org/pdf/1801.04381.pdf
 
-import math
-
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from .BaseModels import BaseModule, Conv_block, Partial_Conv_block
+from .BaseModels import BaseModule, Conv_block
+from .partial_convolution import partial_gated_conv_block
 
 
 class MobileNetV2(BaseModule):
-    def __init__(self, init_weights=False, width_mult=1, add_partial=False):
+    def __init__(self, init_weights=False, width_mult=1, add_partial=False, activation=nn.ReLU6(), bias=False):
 
         super(MobileNetV2, self).__init__()
         self.add_partial = add_partial
-        self.conv_block = Conv_block if not add_partial else Partial_Conv_block
+        self.conv_block = Conv_block if not add_partial else partial_gated_conv_block
         self.res_block = InvertedResidual if not add_partial else PartialInvertedResidual
-
+        self.act_fn = activation
+        self.bias = bias
         self.width_mult = width_mult
         self.inverted_residual_setting = [
             # t, c, n, s, dial
@@ -41,37 +41,24 @@ class MobileNetV2(BaseModule):
 
         # first_layer
         features = [nn.Sequential(*self.conv_block(3, in_channel, kernel_size=3, stride=2,
-                                                   padding=1, bias=False,
-                                                   BN=True, activation=nn.ReLU6()))]
+                                                   padding=1, bias=self.bias,
+                                                   BN=True, activation=self.act_fn))]
 
         for t, c, n, s, d in settings:
             out_channel = int(c * self.width_mult)
             block = []
             for i in range(n):
                 if i == 0:
-                    block.append(self.res_block(in_channel, out_channel, s, t, d))
+                    block.append(self.res_block(in_channel, out_channel, s, t, d,
+                                                activation=self.act_fn, bias=self.bias))
                 else:
-                    block.append(self.res_block(in_channel, out_channel, 1, t, 1))
+                    block.append(self.res_block(in_channel, out_channel, 1, t, 1,
+                                                activation=self.act_fn, bias=self.bias))
                 in_channel = out_channel
             features.append(nn.Sequential(*block))
         # last layer
         self.last_channel = out_channel
         return nn.Sequential(*features)
-
-    def initialize_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-                if m.bias is not None:
-                    m.bias.data.zero_()
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-            elif isinstance(m, nn.Linear):
-                n = m.weight.size(1)
-                m.weight.data.normal_(0, n)
-                m.bias.data.zero_()
 
     def load_state_dict(self, state_dict, strict=True):
         own_state = self.state_dict()
@@ -98,10 +85,13 @@ class MobileNetV2(BaseModule):
 
 
 class InvertedResidual(BaseModule):
-    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=Conv_block):
+    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=Conv_block,
+                 activation=nn.ReLU6(), bias=False):
         super(InvertedResidual, self).__init__()
         self.conv_bloc = conv_block_fn
         self.stride = stride
+        self.act_fn = activation
+        self.bias = bias
         assert stride in [1, 2]
 
         self.res_connect = self.stride == 1 and in_channel == out_channel
@@ -111,13 +101,14 @@ class InvertedResidual(BaseModule):
         # standard convolution
         mid_channel = in_channel * expand_ratio
         m = self.conv_bloc(in_channel, mid_channel,
-                           1, 1, 0, bias=False,
-                           BN=True, activation=nn.ReLU6())
+                           1, 1, 0, bias=self.bias,
+                           BN=True, activation=self.act_fn)
         # depth-wise separable convolution
         m += self.conv_bloc(mid_channel, mid_channel, 3, stride, padding=1 + (dilation - 1),
-                            dilation=dilation, groups=mid_channel, bias=False,
-                            BN=True, activation=nn.ReLU6())
-        m += self.conv_bloc(mid_channel, out_channel, 1, 1, 0, bias=False, BN=True)
+                            dilation=dilation, groups=mid_channel, bias=self.bias,
+                            BN=True, activation=self.act_fn)
+        # linear to preserve info : see the section: linear bottleneck. Removing the activation improves the result
+        m += self.conv_bloc(mid_channel, out_channel, 1, 1, 0, bias=self.bias, BN=True, activation=None)
         return nn.Sequential(*m)
 
     def forward(self, x):
@@ -131,15 +122,17 @@ class InvertedResidual(BaseModule):
             return self.forward(x)
 
 
-
 class PartialInvertedResidual(InvertedResidual):
-    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=Partial_Conv_block):
+    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=partial_gated_conv_block,
+                 activation=nn.ReLU6(), bias=False):
         super(PartialInvertedResidual, self).__init__(in_channel=in_channel,
                                                       out_channel=out_channel,
                                                       stride=stride,
                                                       expand_ratio=expand_ratio,
                                                       dilation=dilation,
                                                       conv_block_fn=conv_block_fn)
+        self.act_fn = activation
+        self.bias = bias
 
     def forward(self, args):
         if self.res_connect:
