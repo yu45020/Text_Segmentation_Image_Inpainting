@@ -5,7 +5,7 @@ import re
 from itertools import chain
 
 import torch
-from PIL import Image
+from PIL import Image, ImageChops
 from torch import nn
 from torch.nn.functional import pad
 from torch.utils.data import Dataset
@@ -18,11 +18,11 @@ LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 Tensor = FloatTensor
 """
 Filter difference in brightness, to some degree. 
-If this value is set very high, say 0.8, some words are hard to detect;
+If this value is set very high, say 0.8, some words are filtered out;
 if too small, say <0.1, the mask may have noisy white points, and the model will fail to converge. 
 VERY IMPORTANT: Generate masks before dumping data into the model. Noisy data or almost black masks hurt performances.
 """
-brightness_difference = 0.3  # in [0,1]
+brightness_difference = 0.4  # in [0,1]
 
 
 class TextSegmentationData(Dataset):
@@ -66,15 +66,11 @@ class TextSegmentationData(Dataset):
 
     @staticmethod
     def get_mask(raw_pil, clean_pil):
-        raw_tensor = to_tensor(raw_pil)
-        clean_tensor = to_tensor(clean_pil)
-        mask = torch.abs(raw_tensor - clean_tensor)  # usually use white to cover words
-        mask = mask[0, :, :]  # single channel
-        mask = torch.where(mask > brightness_difference,  # filter difference in brightness
-                           torch.ones_like(mask),
-                           torch.zeros_like(mask))
+        # use PIL ! It will take care the difference in brightness/contract
+        mask = ImageChops.difference(raw_pil, clean_pil)
+        mask = to_tensor(mask)
+        mask = mask[:1, :, :] > brightness_difference  # single channel
         return mask.long()
-
 
 
 class EvaluateSet(Dataset):
