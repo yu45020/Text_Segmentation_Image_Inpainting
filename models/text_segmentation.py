@@ -5,7 +5,6 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.utils.checkpoint import checkpoint
 
 from .BaseModels import BaseModule, Conv_block
 from .MobileNetV2 import MobileNetV2
@@ -37,7 +36,7 @@ class MobileNetEncoder(MobileNetV2):
             print("Encoder check point is loaded")
         else:
             print("No check point for the encoder is loaded. ")
-        if free_last_blocks:
+        if free_last_blocks >= 0:
             self.freeze_params(free_last_blocks)
 
         else:
@@ -84,25 +83,17 @@ class ASP(BaseModule):
         asp_pool = [layer(x) for layer in self.asp.children()]
         return torch.cat(avg_pool + asp_pool, dim=1)
 
-    def forward_checkpoint(self, x):
-        avg_pool = checkpoint(self.img_pooling_1, x)
-        avg_pool = F.upsample(avg_pool, size=x.shape[2:], mode='bilinear')
-        avg_pool = [checkpoint(self.img_pooling_2, avg_pool)]
-
-        asp_pool = [checkpoint(layer, x) for layer in self.asp.children()]
-        return torch.cat(avg_pool + asp_pool, dim=1)
-
 
 class TextSegament(BaseModule):
-    def __init__(self, encoder_checkpoint=None, free_last_blocks=None):
+    def __init__(self, encoder_checkpoint=None, free_last_blocks=False, width_mult=1):
         super(TextSegament, self).__init__()
         self.act_fn = nn.SELU()
         self.bias = True
 
-        self.layer_4x_conv = nn.Sequential(*Conv_block(24, 128, kernel_size=3, padding=1,
+        self.layer_4x_conv = nn.Sequential(*Conv_block(int(24 * width_mult), 128, kernel_size=3, padding=1,
                                                        bias=self.bias, BN=True, activation=self.act_fn))
         # self.encoder.last_channel --|
-        self.feature_pooling = ASP(320, out_channel=256)
+        self.feature_pooling = ASP(int(320 * width_mult), out_channel=256)
 
         # decoder
         self.transition_2_decoder = nn.Sequential(*Conv_block(256 * 5, 128, kernel_size=1,
@@ -123,7 +114,7 @@ class TextSegament(BaseModule):
         else:
             self.initialize_weights()
         # use the pre-train weights to initialize the model
-        self.encoder = MobileNetEncoder(encoder_checkpoint, free_last_blocks,
+        self.encoder = MobileNetEncoder(encoder_checkpoint, free_last_blocks, width_mult=width_mult,
                                         activation=nn.ReLU6(), bias=False)  # may need to retrain the last 4 layers
 
     def forward(self, x):

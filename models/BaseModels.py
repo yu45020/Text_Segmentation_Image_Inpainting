@@ -89,7 +89,10 @@ class BaseModule(nn.Module):
             yield
 
     def total_parameters(self):
-        return sum([i.numel() for i in self.parameters()])
+        total = sum([i.numel() for i in self.parameters()])
+        trainable = sum([i.numel() for i in self.parameters() if i.requires_grad])
+        print("Total parameters : {}. Trainable parameters : {}".format(total, trainable))
+        return total
 
     def forward(self, *x):
         raise NotImplementedError
@@ -105,5 +108,3 @@ def Conv_block(in_channels, out_channels, kernel_size, stride=1,
     if activation:
         m.append(activation)
     return m
-
-

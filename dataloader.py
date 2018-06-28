@@ -9,7 +9,7 @@ from PIL import Image, ImageChops
 from torch import nn
 from torch.nn.functional import pad
 from torch.utils.data import Dataset
-from torchvision.transforms import ColorJitter, ToTensor, RandomResizedCrop, Compose, Normalize, transforms
+from torchvision.transforms import ColorJitter, ToTensor, RandomResizedCrop, Compose, Normalize, transforms, Grayscale
 from torchvision.transforms.functional import resized_crop, to_tensor
 
 use_cuda = torch.cuda.is_available()
@@ -30,12 +30,12 @@ class TextSegmentationData(Dataset):
         # get raw images
         self.images = glob.glob(os.path.join(img_folder, "raw/*"))
         assert len(self.images) > 0
-        self.max_img = max_img
+        self.max_img = max_img if max_img else len(self.images)
         # if len(self.images) > max_img and max_img:
         #     self.images = random.choices(self.images, k=max_img)
-        self.images = random.choices(self.images, k=max_img)
+        self.images = random.choices(self.images, k=self.max_img)
         print("Find {} images. ".format(len(self.images)))
-
+        self.grayscale = Grayscale(num_output_channels=1)
         self.img_size = img_size
         # image augment
         self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
@@ -56,20 +56,20 @@ class TextSegmentationData(Dataset):
 
     def process_images(self, raw, clean):
         i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.1, 2.0), ratio=(3. / 4., 4. / 3.))
-        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size)
-        clean_img = resized_crop(clean, i, j, h, w, self.img_size)
+        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
+        clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
         mask_tensor_long = self.get_mask(raw_img, clean_img)
         raw_img = self.transformer(raw_img)
         return raw_img, mask_tensor_long
 
-    @staticmethod
-    def get_mask(raw_pil, clean_pil):
+    def get_mask(self, raw_pil, clean_pil):
         # use PIL ! It will take care the difference in brightness/contract
         mask = ImageChops.difference(raw_pil, clean_pil)
+        mask = self.grayscale(mask)  # single channel
         mask = to_tensor(mask)
-        mask = mask[:1, :, :] > brightness_difference  # single channel
+        mask = mask > brightness_difference
         return mask.long()
 
 
@@ -100,7 +100,7 @@ class EvaluateSet(Dataset):
         long = max(pil_img.size)
         ratio = fix_len / long
         new_size = tuple(map(lambda x: int(x * ratio), pil_img.size))
-        img = pil_img.resize(new_size, Image.LANCZOS)
+        img = pil_img.resize(new_size, Image.BICUBIC)
         # img = pil_img
         img = self.transformer(img)
 
@@ -115,6 +115,29 @@ class EvaluateSet(Dataset):
         img = pad(img, boarder_pad, value=0)
         mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
         return self.normalizer(img), origin, mask_resizer
+
+    #
+    # def resize_pad_tensor(self, pil_img):
+    #     origin = self.transformer(pil_img)
+    #     fix_len = 512
+    #     long = min(pil_img.size)
+    #     ratio = fix_len / long
+    #     new_size = tuple(map(lambda x: int(x * ratio), pil_img.size))
+    #     img = pil_img.resize(new_size, Image.BICUBIC)
+    #     # img = pil_img
+    #     img = self.transformer(img)
+    #
+    #     _, _, h, w = img.size()
+    #     if w > fix_len:
+    #
+    #         boarder_pad = (0, w-fix_len, 0, 0)
+    #     else:
+    #
+    #         boarder_pad = (0, 0, 0, h-fix_len)
+    #
+    #     img = pad(img, boarder_pad, value=0)
+    #     mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
+    #     return self.normalizer(img), origin, mask_resizer
 
     @staticmethod
     def resize_mask(padded_values, origin_size):
