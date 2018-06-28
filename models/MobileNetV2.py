@@ -92,7 +92,7 @@ class InvertedResidual(BaseModule):
         self.stride = stride
         self.act_fn = activation
         self.bias = bias
-        assert stride in [1, 2]
+        # assert stride in [1, 2]
 
         self.res_connect = self.stride == 1 and in_channel == out_channel
         self.conv = self.make_body(in_channel, out_channel, stride, expand_ratio, dilation)

@@ -22,7 +22,14 @@ I don't use a text-detection model such as Textbox Plus Plus, Single Shot MultiB
 To generate training data, I use two copies of images: one is the origin, and the other one is text clean only. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows the text region. The idea is inspired by He, etc's  [Single Shot Text Detector with Regional Attention](https://arxiv.org/abs/1709.00138) and He,etc's [Mask-R-CNN](https://arxiv.org/abs/1703.06870). Both papers show a pixel level object detection. 
 
 
-Special notes on training the model: The model runs less than a second with 50  512x512 images  in Nvidia P-100. The run time bottleneck will probably lay in CPU speed. Try to get more CPUs and large memory when setting ```num_workers``` in PyTOrch's dataloader. 8 workers takes around 29 GB memory. However, I use PIL to process images and find CPUS always hand up for few seconds in every epochs. 
+Notes on training the model:
+
+The model runs less than a second with 80  512x512 images  in Nvidia P-100. The run time bottleneck will probably lay in CPU speed. Try to get more CPUs and large memory when setting ```num_workers``` in PyTOrch's dataloader. 6 workers takes around 10 GB memory. If CPUs are not fast enough to keep GPUs busy, please downscale the input images. The loss scores are similar for both origintal and downscaled version.
+
+I train the model with Focal loss with gamma of 2 and alpha of 0.25, SGD wit Nesterov (momentum is 0.98), batch size is 80, and the learning rate is 0.1 which works surprisingly well until the loss goes to 0.00150. Then the learning rate descreases gradually to 0.008, but the model doesn't improve.
+
+I am trying cross entropy loss with weights.
+
 
 The model is trained on black/white images, but it also works for color images. 
 
