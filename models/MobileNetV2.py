@@ -41,7 +41,7 @@ class MobileNetV2(BaseModule):
 
         # first_layer
         features = [nn.Sequential(*self.conv_block(3, in_channel, kernel_size=3, stride=2,
-                                                   padding=1, bias=self.bias,
+                                                   padding=(3 - 1) // 2, bias=self.bias,
                                                    BN=True, activation=self.act_fn))]
 
         for t, c, n, s, d in settings:
@@ -92,6 +92,8 @@ class InvertedResidual(BaseModule):
         self.stride = stride
         self.act_fn = activation
         self.bias = bias
+        self.in_channels = in_channel
+        self.out_channels = out_channel
         # assert stride in [1, 2]
 
         self.res_connect = self.stride == 1 and in_channel == out_channel
