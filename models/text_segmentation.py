@@ -5,6 +5,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.utils.checkpoint import checkpoint
 
 from .BaseModels import BaseModule, Conv_block
 from .MobileNetV2 import MobileNetV2
@@ -131,7 +132,7 @@ class RFB(BaseModule):
     def __init__(self, in_channel, out_channel, activation):
         super(RFB, self).__init__()
         asp_rate = [5, 17, 29]
-        self.act_fn = activation
+        # self.act_fn = activation
         self.input_down_channel = nn.Sequential(
             *Conv_block(in_channel, out_channel, kernel_size=1, bias=False, BN=True, activation=False))
 
@@ -180,7 +181,7 @@ class RFB(BaseModule):
 
         # skip connection
         resi = self.input_down_channel(x)
-        return self.act_fn(rfb_pool + resi)
+        return rfb_pool + resi
 
 
 class TextSegament(BaseModule):
@@ -191,6 +192,7 @@ class TextSegament(BaseModule):
         # use the pre-train weights to initialize the model
         self.encoder = MobileNetEncoder(activation=self.act_fn, bias=False, width_mult=width_mult, )
 
+        # down scale 1/2 features
         self.feature_avg_pool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
         # self.encoder.last_channel --|
         # all feature maps
@@ -255,3 +257,6 @@ class TextSegament(BaseModule):
     def forward_checkpoint(self, x):
         with torch.no_grad():
             return self.forward(x)
+
+
+checkpoint
