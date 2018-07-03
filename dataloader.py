@@ -73,6 +73,44 @@ class TextSegmentationData(Dataset):
         return mask.long()
 
 
+class DanbooruDataset(Dataset):
+    def __init__(self, image_foler, name_tag_dict, mean, std,
+                 image_size=512, max_images=False, num_class=1000):
+        super(DanbooruDataset, self).__init__()
+        assert image_size // 16
+
+        self.images = glob.glob(os.path.join(image_foler, '*'))
+        assert len(self.images) > 0
+        if max_images:
+            self.images = random.choices(self.images, k=max_images)
+        print("Find {} images. ".format(len(self.images)))
+
+        self.name_tag_dict = name_tag_dict
+        self.img_transform = self.transformer(image_size, mean, std)
+        # one hot encoding
+        self.onehot = torch.eye(num_class)
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, item):
+        image_file = self.images[item]
+        image = self.img_transform(Image.open(image_file).convert("RGB"))
+
+        basename = os.path.basename(image_file).split('.')[0]
+        tags = self.name_tag_dict[basename]
+        target = self.onehot.index_select(0, torch.LongTensor(tags)).sum(0)  # (1, num_class)
+        return image, LongTensor(target)
+
+    @staticmethod
+    def transformer(image_size, mean, std):
+        m = Compose([RandomResizedCrop(image_size, scale=(0.5, 2.0)),
+                     ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+                     ToTensor(),
+                     Normalize(mean, std)])
+        return m
+
+
 class EvaluateSet(Dataset):
     def __init__(self, img_folder=None):
         self.eval_imgs = [glob.glob(img_folder + "**/*.{}".format(i), recursive=True) for i in ['jpg', 'jpeg', 'png']]
@@ -115,29 +153,6 @@ class EvaluateSet(Dataset):
         img = pad(img, boarder_pad, value=0)
         mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
         return self.normalizer(img), origin, mask_resizer
-
-    #
-    # def resize_pad_tensor(self, pil_img):
-    #     origin = self.transformer(pil_img)
-    #     fix_len = 512
-    #     long = min(pil_img.size)
-    #     ratio = fix_len / long
-    #     new_size = tuple(map(lambda x: int(x * ratio), pil_img.size))
-    #     img = pil_img.resize(new_size, Image.BICUBIC)
-    #     # img = pil_img
-    #     img = self.transformer(img)
-    #
-    #     _, _, h, w = img.size()
-    #     if w > fix_len:
-    #
-    #         boarder_pad = (0, w-fix_len, 0, 0)
-    #     else:
-    #
-    #         boarder_pad = (0, 0, 0, h-fix_len)
-    #
-    #     img = pad(img, boarder_pad, value=0)
-    #     mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
-    #     return self.normalizer(img), origin, mask_resizer
 
     @staticmethod
     def resize_mask(padded_values, origin_size):

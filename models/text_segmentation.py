@@ -5,54 +5,58 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.utils.checkpoint import checkpoint
+from torch.utils.checkpoint import checkpoint_sequential
 
 from .BaseModels import BaseModule, Conv_block
-from .MobileNetV2 import MobileNetV2
+from .MobileNetV2 import DilatedMobileNetV2
 
 
-class MobileNetEncoder(MobileNetV2):
-    def __init__(self, add_partial=False, activation=nn.ReLU6(),
-                 bias=False, width_mult=1):
-        super(MobileNetEncoder, self).__init__(add_partial=add_partial, width_mult=width_mult)
-        self.add_partial = add_partial
-        self.bias = bias
-        self.act_fn = activation
-        # # Rethinking Atrous Convolution for Semantic Image Segmentation
-        self.inverted_residual_setting = [
-            # t, c, n, s, dila  # input size
-            [1, 16, 1, 1, 1],  # 1/2
-            [6, 24, 2, 2, 1],  # 1/4
-            [6, 32, 3, 2, 1],  # 1/8
-            [6, 64, 4, 1, 2],  # <-- add astrous conv and keep 1/8
-            [6, 96, 3, 1, 4],
-            [6, 160, 3, 1, 8],
-            [6, 320, 1, 1, 16],
-        ]
-        self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
-
-    def load_pre_train_checkpoint(self, pre_train_checkpoint, free_last_blocks):
-        if pre_train_checkpoint:
-            if isinstance(pre_train_checkpoint, str):
-                self.load_state_dict(torch.load(pre_train_checkpoint, map_location='cpu'))
-            else:
-                self.load_state_dict(pre_train_checkpoint)
-            print("Encoder check point is loaded")
-        else:
-            print("No check point for the encoder is loaded. ")
-        if free_last_blocks >= 0:
-            self.freeze_params(free_last_blocks)
-
-        else:
-            print("All layers in the encoders are re-trained. ")
-
-    def freeze_params(self, free_last_blocks=2):
-        # the last 4 blocks are changed from stride of 2 to dilation of 2
-        for i in range(len(self.features) - free_last_blocks):
-            for params in self.features[i].parameters():
-                params.requires_grad = False
-        print("{}/{} layers in the encoder are freezed.".format(len(self.features) - free_last_blocks,
-                                                                len(self.features)))
+#
+#
+# class MobileNetEncoder(MobileNetV2):
+#     def __init__(self, add_partial=False, activation=nn.ReLU6(),
+#                  bias=False, width_mult=1):
+#         super(MobileNetEncoder, self).__init__(add_partial=add_partial, width_mult=width_mult)
+#         self.add_partial = add_partial
+#         self.bias = bias
+#         self.width_mult = width_mult
+#         self.act_fn = activation
+#         self.out_stride = 8
+#         # # Rethinking Atrous Convolution for Semantic Image Segmentation
+#         self.inverted_residual_setting = [
+#             # t, c, n, s, dila  # input size
+#             [1, 16, 1, 1, 1],  # 1/2
+#             [6, 24, 2, 2, 1],  # 1/4
+#             [6, 32, 3, 2, 1],  # 1/8
+#             [6, 64, 4, 1, 2],  # <-- add astrous conv and keep 1/8
+#             [6, 96, 3, 1, 4],
+#             [6, 160, 3, 1, 8],
+#             [6, 320, 1, 1, 16],
+#         ]
+#         self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
+#
+#     def load_pre_train_checkpoint(self, pre_train_checkpoint, free_last_blocks):
+#         if pre_train_checkpoint:
+#             if isinstance(pre_train_checkpoint, str):
+#                 self.load_state_dict(torch.load(pre_train_checkpoint, map_location='cpu'))
+#             else:
+#                 self.load_state_dict(pre_train_checkpoint)
+#             print("Encoder check point is loaded")
+#         else:
+#             print("No check point for the encoder is loaded. ")
+#         if free_last_blocks >= 0:
+#             self.freeze_params(free_last_blocks)
+#
+#         else:
+#             print("All layers in the encoders are re-trained. ")
+#
+#     def freeze_params(self, free_last_blocks=2):
+#         # the last 4 blocks are changed from stride of 2 to dilation of 2
+#         for i in range(len(self.features) - free_last_blocks):
+#             for params in self.features[i].parameters():
+#                 params.requires_grad = False
+#         print("{}/{} layers in the encoder are freezed.".format(len(self.features) - free_last_blocks,
+#                                                                 len(self.features)))
 
 
 class SpatialChannelSqueezeExcitation(BaseModule):
@@ -62,7 +66,7 @@ class SpatialChannelSqueezeExcitation(BaseModule):
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.channel_excite = nn.Sequential(
             nn.Linear(in_channel, in_channel // 2),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Linear(in_channel // 2, in_channel),
             nn.Sigmoid()
         )
@@ -138,13 +142,13 @@ class RFB(BaseModule):
 
         self.rfb_linear_conv = nn.Conv2d(out_channel * 4, out_channel, kernel_size=1, bias=False)
         self.rfb = nn.Sequential(
-            self.make_pooling_branch(in_channel, out_channel, out_channel, conv_kernel=1,
+            self.make_pooling_branch(in_channel, out_channel // 2, out_channel, conv_kernel=1,
                                      astro_rate=1, half_conv=False),
-            self.make_pooling_branch(in_channel, out_channel, out_channel, conv_kernel=3,
+            self.make_pooling_branch(in_channel, out_channel // 2, out_channel, conv_kernel=3,
                                      astro_rate=asp_rate[0], half_conv=True),
-            self.make_pooling_branch(in_channel, out_channel, out_channel, conv_kernel=5,
+            self.make_pooling_branch(in_channel, out_channel // 2, out_channel, conv_kernel=5,
                                      astro_rate=asp_rate[1], half_conv=True),
-            self.make_pooling_branch(in_channel, out_channel, out_channel, conv_kernel=7,
+            self.make_pooling_branch(in_channel, out_channel // 2, out_channel, conv_kernel=7,
                                      astro_rate=asp_rate[2], half_conv=True)
         )
 
@@ -187,10 +191,10 @@ class RFB(BaseModule):
 class TextSegament(BaseModule):
     def __init__(self, encoder_checkpoint=None, free_last_blocks=-1, width_mult=1):
         super(TextSegament, self).__init__()
-        self.act_fn = nn.SELU()
+        self.act_fn = nn.SELU(inplace=True)
         self.bias = True
         # use the pre-train weights to initialize the model
-        self.encoder = MobileNetEncoder(activation=self.act_fn, bias=False, width_mult=width_mult, )
+        self.encoder = DilatedMobileNetV2(activation=self.act_fn, bias=False, width_mult=width_mult)
 
         # down scale 1/2 features
         self.feature_avg_pool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
@@ -223,13 +227,14 @@ class TextSegament(BaseModule):
             self.initialize_weights()
         self.encoder.load_pre_train_checkpoint(encoder_checkpoint, free_last_blocks)
         # add channel squeeze and spatial excitation blocks except the last block
-        for i in self.encoder.features:
-            add_SCSE_block(i)
+        # for i in self.encoder.features:
+        #     add_SCSE_block(i)
 
     def forward(self, x):
         layer_out = []
         for layer in self.encoder.features[:3]:
-            x = layer(x)
+            x = checkpoint_sequential(layer, len(list(layer)), x)
+            # x = layer(x)
             layer_out.append(x)
 
         layer_out[0] = self.feature_avg_pool(layer_out[0])
@@ -238,7 +243,8 @@ class TextSegament(BaseModule):
 
         pooled_features = []
         for layer in self.encoder.features[3:]:
-            x = layer(x)
+            x = checkpoint_sequential(layer, len(list(layer)), x)
+            # x = layer(x)
             pooled_features.append(x)
 
         x = self.feature_pooling(torch.cat(pooled_features, dim=1))
@@ -257,6 +263,3 @@ class TextSegament(BaseModule):
     def forward_checkpoint(self, x):
         with torch.no_grad():
             return self.forward(x)
-
-
-checkpoint

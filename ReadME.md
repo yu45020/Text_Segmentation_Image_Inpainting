@@ -6,6 +6,12 @@ The road ahead is following:
 * Detect and mask text from an image
 * Use the generated mask as holes to repair the image
 
+## Current Stage
+
+#### Text segmentation
+
+I train several version of Mobile Net V2 with various settings and check points, but none of them works perfect even on my training images. The problem might be the model's size since resnet 50 & 101, which have more than 10x numbers of  parameters, have much better performance records. Another problem is that models are pre-trained on photos from the real word, but my training images are completely different. For example, ImageNet's mean and std (RGB) are [[0.485, 0.456, 0.406] and [0.229, 0.224, 0.225]](https://github.com/tonylins/pytorch-mobilenet-v2/issues/9), but images from [Danbooru2017](https://www.gwern.net/Danbooru2017#rsync), which are similar to my training samples,  have mean [ 0.4935,  0.4563,  0.4544] and std [0.3769,  0.3615,  0.3566].  Transfering learning might not work well [Torralba & Efros, 2011](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.208.2314&rep=rep1&type=pdf). Thus, I am training a Mobile Net V2 from scratch on over 100k images from Danbooru2017. I hope it works. ~~Training  resnet 101 is expensive.~~
+
 
 # Models
 Targeted users generally don't have high spec GPUs or CPUs, so I aim to use/customize fast and memory efficient deep neural nets. 

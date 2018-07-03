@@ -11,7 +11,7 @@ from .partial_convolution import partial_gated_conv_block
 
 
 class MobileNetV2(BaseModule):
-    def __init__(self, init_weights=False, width_mult=1, add_partial=False, activation=nn.ReLU6(), bias=False):
+    def __init__(self, width_mult=1, add_partial=False, activation=nn.ReLU6(), bias=False):
 
         super(MobileNetV2, self).__init__()
         self.add_partial = add_partial
@@ -20,6 +20,7 @@ class MobileNetV2(BaseModule):
         self.act_fn = activation
         self.bias = bias
         self.width_mult = width_mult
+        self.out_stride = 32  # 1/32 of input size
         self.inverted_residual_setting = [
             # t, c, n, s, dial
             [1, 16, 1, 1, 1],
@@ -32,9 +33,6 @@ class MobileNetV2(BaseModule):
         ]
         self.last_channel = 0  # last one is avg pool
         self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
-
-        if init_weights:
-            self.initialize_weights()
 
     def make_inverted_resblocks(self, settings):
         in_channel = int(32 * self.width_mult)
@@ -60,21 +58,45 @@ class MobileNetV2(BaseModule):
         self.last_channel = out_channel
         return nn.Sequential(*features)
 
-    def load_state_dict(self, state_dict, strict=True):
-        own_state = self.state_dict()
-        if self.add_partial:  # remove all mask conv
-            own_name = list(filter(lambda x: 'mask_conv' not in x, list(own_state)))[:len(own_state)]
-            state_dict = {k: v for k, v in zip(own_name, state_dict.values())}
-        for name, param in state_dict.items():
-            if name in own_state:
-                try:
-                    own_state[name].copy_(param.data)
-                except Exception as e:
-                    print("-----------------------------------------")
-                    print("Parameter {} fails to load.".format(name))
-                    print(e)
+    def load_pre_train_checkpoint(self, pre_train_checkpoint, free_last_blocks):
+        if pre_train_checkpoint:
+            if isinstance(pre_train_checkpoint, str):
+                self.load_state_dict(torch.load(pre_train_checkpoint, map_location='cpu'))
             else:
-                print("Parameter {} is not in the model. ".format(name))
+                self.load_state_dict(pre_train_checkpoint)
+            print("Encoder check point is loaded")
+        else:
+            print("No check point for the encoder is loaded. ")
+        if free_last_blocks >= 0:
+            self.freeze_params(free_last_blocks)
+
+        else:
+            print("All layers in the encoders are re-trained. ")
+
+    def freeze_params(self, free_last_blocks=2):
+        # the last 4 blocks are changed from stride of 2 to dilation of 2
+        for i in range(len(self.features) - free_last_blocks):
+            for params in self.features[i].parameters():
+                params.requires_grad = False
+        print("{}/{} layers in the encoder are freezed.".format(len(self.features) - free_last_blocks,
+                                                                len(self.features)))
+
+    #    for partial conv ---- will not use
+    # def load_state_dict(self, state_dict, strict=True):
+    #     own_state = self.state_dict()
+    #     if self.add_partial:  # remove all mask conv
+    #         own_name = list(filter(lambda x: 'mask_conv' not in x, list(own_state)))[:len(own_state)]
+    #         state_dict = {k: v for k, v in zip(own_name, state_dict.values())}
+    #     for name, param in state_dict.items():
+    #         if name in own_state:
+    #             try:
+    #                 own_state[name].copy_(param.data)
+    #             except Exception as e:
+    #                 print("-----------------------------------------")
+    #                 print("Parameter {} fails to load.".format(name))
+    #                 print(e)
+    #         else:
+    #             print("Parameter {} is not in the model. ".format(name))
 
     def forward(self, x):
         return self.features(x)
@@ -151,3 +173,54 @@ class PartialInvertedResidual(InvertedResidual):
     def forward_checkpoint(self, args):
         with torch.no_grad():
             return self.forward(args)
+
+
+class DilatedMobileNetV2(MobileNetV2):
+    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_partial=False, ):
+        super(DilatedMobileNetV2, self).__init__(width_mult=width_mult, activation=activation,
+                                                 bias=bias, add_partial=add_partial, )
+        self.add_partial = add_partial
+        self.bias = bias
+        self.width_mult = width_mult
+        self.act_fn = activation
+        self.out_stride = 8
+        # # Rethinking Atrous Convolution for Semantic Image Segmentation
+        self.inverted_residual_setting = [
+            # t, c, n, s, dila  # input size
+            [1, 16, 1, 1, 1],  # 1/2
+            [6, 24, 2, 2, 1],  # 1/4
+            [6, 32, 3, 2, 1],  # 1/8
+            [6, 64, 4, 1, 2],  # <-- add astrous conv and keep 1/8
+            [6, 96, 3, 1, 4],
+            [6, 160, 3, 1, 8],
+            [6, 320, 1, 1, 16],
+        ]
+        self.features = self.make_inverted_resblocks(self.inverted_residual_setting)
+
+
+class MobileNetV2Classifier(BaseModule):
+    def __init__(self, num_class, input_size=512, width_mult=1.4):
+        super(MobileNetV2Classifier, self).__init__()
+        self.act_fn = nn.SELU(inplace=True)
+        self.feature = DilatedMobileNetV2(width_mult=width_mult, activation=self.act_fn,
+                                          bias=False, add_partial=False)
+        self.pre_classifier = nn.Sequential(
+            *Conv_block(self.feature.last_channel, 1024, kernel_size=1,
+                        bias=False, BN=True, activation=self.act_fn),
+            nn.AvgPool2d(input_size // self.feature.out_stride))  # b,c, 1,1
+
+        self.classifier = nn.Sequential(
+            nn.Dropout(0.2, inplace=True),
+            nn.Linear(1024, num_class)
+        )
+        if isinstance(self.act_fn, nn.SELU):
+            self.selu_init_params()
+        else:
+            self.initialize_weights()
+
+    def forward(self, x):
+        x = self.feature(x)
+        x = self.pre_classifier(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+        return x
