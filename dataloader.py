@@ -9,7 +9,8 @@ from PIL import Image, ImageChops
 from torch import nn
 from torch.nn.functional import pad
 from torch.utils.data import Dataset
-from torchvision.transforms import ColorJitter, ToTensor, RandomResizedCrop, Compose, Normalize, transforms, Grayscale
+from torchvision.transforms import ColorJitter, ToTensor, RandomResizedCrop, Compose, Normalize, transforms, Grayscale, \
+    RandomGrayscale
 from torchvision.transforms.functional import resized_crop, to_tensor
 
 use_cuda = torch.cuda.is_available()
@@ -86,7 +87,7 @@ class DanbooruDataset(Dataset):
         print("Find {} images. ".format(len(self.images)))
 
         self.name_tag_dict = name_tag_dict
-        self.img_transform = self.transformer(image_size, mean, std)
+        self.img_transform = self.transformer(mean, std)
         # one hot encoding
         self.onehot = torch.eye(num_class)
 
@@ -103,8 +104,10 @@ class DanbooruDataset(Dataset):
         return image, LongTensor(target)
 
     @staticmethod
-    def transformer(image_size, mean, std):
-        m = Compose([RandomResizedCrop(image_size, scale=(0.5, 2.0)),
+    def transformer(mean, std):
+        m = Compose([RandomGrayscale(p=0.2),
+                     # RandomHorizontalFlip(p=0.2),
+                     # RandomVerticalFlip(p=0.2),
                      ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
                      ToTensor(),
                      Normalize(mean, std)])

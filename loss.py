@@ -135,3 +135,8 @@ def total_variation_loss(image):
     loss = torch.mean(torch.abs(image[:, :, :, :-1] - image[:, :, :, 1:])) + \
            torch.mean(torch.abs(image[:, :, :-1, :] - image[:, :, 1:, :]))
     return loss
+
+
+0.775
+0.465
+0.17
