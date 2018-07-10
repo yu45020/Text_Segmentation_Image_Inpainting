@@ -226,51 +226,65 @@ class MobileNetV2Classifier(BaseModule):
         # if width multiple is 1.4, then there are 944 channels
         cat_feat_num = sum([i[0].out_channels for i in self.encoder.features[3:]])
         # self.conv_classifier = self.make_conv_classifier(cat_feat_num, num_class)
-        self.feature_conv = InvertedResidual(cat_feat_num, num_class, stride=3, expand_ratio=1, dilation=1,
+        self.feature_conv = InvertedResidual(cat_feat_num, num_class, stride=1, expand_ratio=1, dilation=1,
                                              conv_block_fn=Conv_block, activation=self.act_fn, bias=False,
                                              add_sece=False)
         self.global_avg = nn.AdaptiveAvgPool2d(1)
-        lstm_hidden = 128
-        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=True, bidirectional=True)
-        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 2), self.act_fn)
+
+        # ---------------------------------------------------------------------
+        #               LSTM Part
+        # ---------------------------------------------------------------------
+        lstm_hidden = 256
+        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=True)
+        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), self.act_fn)
         self.lstm_linear_score = nn.Linear(lstm_hidden, num_class)
-        self.st_theta_linear = nn.Linear(lstm_hidden // 2, 6)
+        self.st_theta_linear = nn.Sequential(nn.Linear(lstm_hidden // 4, 2 * 3))
+        self.anchor_box = FloatTensor([(0, 0), (0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
+                                       ])
 
     def cnn_bi_lstm_classifier(self, input_img):
         # Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
         # LSTM input: step size is one, feature size is num_class (channels)
 
-        # identity transformation.
-        #  reference: https://pytorch.org/tutorials/intermediate/spatial_transformer_tutorial.html
-        self.st_theta_linear.weight.data.zero_()
-        self.st_theta_linear.bias.data.copy_(torch.FloatTensor([1, 0, 0, 0, 1, 0]))
-
-        category_scores = []
         img = input_img
         batch = input_img.size(0)
-        for i in range(self.num_class + 1):
-            features = self.global_avg(img).view(batch, 1, -1)
-            # y.size = batch, seq_len (1) , num_direc*hidden_size
-            # h, c size = num_layer*bi-direc, batch, hidden_size
-            y, (h, c) = self.lstm(features)
 
-            y = y.view(y.size(0), y.size(2) // 2, 2).mean(2)  # size:  batch, hidden
-            if i > 0:
-                s = self.lstm_linear_score(y)  # the paper use the hidden state to get scores
-                category_scores.append(s)
+        category_scores = []
+        transform_box = []
+        features = self.global_avg(img).view(batch, 1, -1)
 
-            # update spatial transformer's theta
-            z = self.lstm_linear_z(h.mean(0))
-            st_theta = self.st_theta_linear(z).view(-1, 2, 3)
+        # y.size = batch, seq_len (1) , num_direc*hidden_size
+        # h, c size = num_layer*bi-direc, batch, hidden_size
+        y, (h, c) = self.lstm(features)
+        for i in range(4 + 1):  # 1 free region and 4 anchor points
+            # use hidden state to find the next region around an anchor point
+            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))
+            st_theta = self.st_theta_linear(z).view(batch, 2, 3)
+            st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
+
+            # consider scaling only
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clone()
+
+            transform_box.append(st_theta)
+
             img = self.spatial_transformer(input_img, st_theta)
-        category_scores, index = torch.stack(category_scores, dim=-1).max(-1)
-        return category_scores
+            features = self.global_avg(img).view(batch, 1, -1)
+            y, (h, c) = self.lstm(features, (h, c))
+
+            # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
+            s = self.lstm_linear_score(y.view(batch, -1))
+            category_scores.append(s)
+
+        category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category
+        transform_box = torch.stack(transform_box, dim=1)  # the first one is free. size: batch, regions, 2,3
+        return category_scores, transform_box
 
     @staticmethod
-    def spatial_transformer(input_image, st_theta):
+    def spatial_transformer(input_image, theta):
         # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
         # https://blog.csdn.net/qq_39422642/article/details/78870629
-        grids = affine_grid(st_theta, input_image.size())
+        grids = affine_grid(theta, input_image.size())
         output_img = grid_sample(input_image, grids)
         return output_img
 
@@ -287,5 +301,10 @@ class MobileNetV2Classifier(BaseModule):
         x = torch.cat(feature_maps, dim=1)
         del feature_maps
         x = self.feature_conv(x)
-        x = self.cnn_bi_lstm_classifier(x)
-        return x
+        category_scores, transform_box = self.cnn_bi_lstm_classifier(x)
+        return category_scores, transform_box
+
+    @staticmethod
+    def predict(category_scores):
+        scores, index = category_scores.max(1)
+        return scores

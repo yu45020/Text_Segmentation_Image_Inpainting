@@ -9,6 +9,11 @@ from torch.nn import functional as F
 # copy from  https://github.com/clcarwin/focal_loss_pytorch
 from models.BaseModels import BaseModule
 
+use_cuda = torch.cuda.is_available()
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+Tensor = FloatTensor
+
 
 class FocalLoss(nn.Module):
     # alpha=0.75 gives the best for this project
@@ -48,6 +53,10 @@ class FocalLoss(nn.Module):
         else:
             return loss.sum()
 
+
+# +++++++++++++++++++++++++++++++++++++
+#           Loss for inpainting
+# -------------------------------------
 
 class InapintingLoss(nn.Module):
     # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv/blob/master/loss.py
@@ -137,6 +146,53 @@ def total_variation_loss(image):
     return loss
 
 
-0.775
-0.465
-0.17
+# +++++++++++++++++++++++++++++++++++++
+#           Loss for classification with LSTM
+# -------------------------------------
+# Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
+
+
+class BCERegionLoss(nn.Module):
+    def __init__(self):
+        super(BCERegionLoss, self).__init__()
+        self.anchor_box = FloatTensor([(0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)]).unsqueeze(-1)
+        self.scale_alpha = FloatTensor([1])
+        self.positive_beta = FloatTensor([0.2])
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def scale_loss(self, scale):
+        #         assert scale.size(1) == scale.size(2)
+        sx = scale[:, 0, 0]
+        ls = torch.pow(F.relu(torch.abs(sx) - self.scale_alpha), 2)
+        sy = scale[:, 1, 1]
+        ly = torch.pow(F.relu(torch.abs(sy) - self.scale_alpha), 2)
+        positive_loss = F.relu(self.positive_beta - sx) + F.relu(self.positive_beta - sy)
+
+        loss = 0.1 * positive_loss + ls + ly
+        return loss.sum().view(1)
+
+    def anchor_loss(self, attention_region):
+        # input: num_class, 2 (anchor x, y) , 1   -self.anchor_box
+        distance = 0.5 * torch.pow(attention_region - self.anchor_box, 2).sum(1)
+        return 0.01 * distance.sum().view(1)
+
+    def forward(self, input, target):
+        category, transform_box = input
+        #         scores, index = category.max(1)
+        #         bce_loss = self.bce(scores, target)
+        bce_loss = FloatTensor([0])
+        for i in range(category.size(1)):
+            bce_loss = bce_loss + self.bce(category[:, i, :], target)
+        bce_loss = bce_loss / category.size(1)
+
+        regions = transform_box[:, 1:, :, 2:]
+        region_loss = torch.cat([self.anchor_loss(i) for i in regions]).mean()
+        scales = transform_box[:, :, :, :2]
+        scale_loss = torch.cat([self.scale_loss(i) for i in scales]).mean()
+
+        # spatial transform theta matrix (batch, 2, 3)
+        # sum over the second axis so that transformed regions will not be 0 padded
+        boundary = torch.abs(transform_box).sum(-1)
+        boundary = torch.pow(F.relu(boundary - 1), 2)
+        boundary_loss = 0.5 * boundary.view(boundary.size(0), -1).sum(-1).mean()
+        return bce_loss, bce_loss + 0.01 * region_loss + 0.05 * scale_loss + 0.5 * boundary_loss
