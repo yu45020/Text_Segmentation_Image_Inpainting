@@ -4,11 +4,17 @@
 
 import torch
 from torch import nn
+from torch.nn.functional import affine_grid, grid_sample
 from torch.utils.checkpoint import checkpoint
 
 from models.common import SpatialChannelSqueezeExcitation
 from .BaseModels import BaseModule, Conv_block
 from .partial_convolution import partial_gated_conv_block
+
+use_cuda = torch.cuda.is_available()
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+Tensor = FloatTensor
 
 
 class MobileNetV2(BaseModule):
@@ -212,33 +218,75 @@ class DilatedMobileNetV2(MobileNetV2):
 class MobileNetV2Classifier(BaseModule):
     def __init__(self, num_class, width_mult=1.4, add_sece=False):
         super(MobileNetV2Classifier, self).__init__()
+        self.num_class = num_class
         self.act_fn = nn.LeakyReLU(0.3, inplace=True)  # nn.SELU(inplace=True)
         self.encoder = DilatedMobileNetV2(width_mult=width_mult, activation=self.act_fn,
                                           bias=False, add_sece=add_sece, add_partial=False)
 
         # if width multiple is 1.4, then there are 944 channels
         cat_feat_num = sum([i[0].out_channels for i in self.encoder.features[3:]])
-        self.conv_classifier = self.make_conv_classifier(cat_feat_num, num_class)
-        # self.linear = nn.Sequential(nn.AlphaDropout(0.05),  # recommend by selu's authors
-        #                             nn.Linear(num_class, num_class // 16),
-        #                             nn.SELU(),
-        #                             nn.Linear(num_class // 16, num_class))
-        # if isinstance(self.act_fn, nn.SELU):
-        #     self.selu_init_params()
-        # else:
-        #     self.initialize_weights()
+        # self.conv_classifier = self.make_conv_classifier(cat_feat_num, num_class)
+        self.feature_conv = InvertedResidual(cat_feat_num, num_class, stride=1, expand_ratio=1, dilation=1,
+                                             conv_block_fn=Conv_block, activation=self.act_fn, bias=False,
+                                             add_sece=False)
+        self.global_avg = nn.AdaptiveAvgPool2d(1)
 
-    def make_conv_classifier(self, in_channel, out_channel):
-        m = nn.Sequential(
-            InvertedResidual(in_channel, out_channel, stride=1, expand_ratio=1, dilation=1,
-                             conv_block_fn=Conv_block,
-                             activation=self.act_fn, bias=False, add_sece=True),
-            *Conv_block(out_channel, out_channel, kernel_size=3, padding=1,
-                        groups=out_channel, BN=False, activation=self.act_fn),
-            nn.Conv2d(out_channel, out_channel, kernel_size=1),
+        # ---------------------------------------------------------------------
+        #               LSTM Part
+        # ---------------------------------------------------------------------
+        lstm_hidden = 256
+        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=True)
+        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), self.act_fn)
+        self.lstm_linear_score = nn.Linear(lstm_hidden, num_class)
+        self.st_theta_linear = nn.Sequential(nn.Linear(lstm_hidden // 4, 2 * 3))
+        self.anchor_box = FloatTensor([(0, 0), (0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
+                                       ])
 
-            nn.AdaptiveAvgPool2d(1))
-        return m
+    def cnn_bi_lstm_classifier(self, input_img):
+        # Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
+        # LSTM input: step size is one, feature size is num_class (channels)
+
+        img = input_img
+        batch = input_img.size(0)
+
+        category_scores = []
+        transform_box = []
+        features = self.global_avg(img).view(batch, 1, -1)
+
+        # y.size = batch, seq_len (1) , num_direc*hidden_size
+        # h, c size = num_layer*bi-direc, batch, hidden_size
+        y, (h, c) = self.lstm(features)
+        for i in range(4 + 1):  # 1 free region and 4 anchor points
+            # use hidden state to find the next region around an anchor point
+            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))
+            st_theta = self.st_theta_linear(z).view(batch, 2, 3)
+            st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
+
+            # consider scaling only
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clone()
+
+            transform_box.append(st_theta)
+
+            img = self.spatial_transformer(input_img, st_theta)
+            features = self.global_avg(img).view(batch, 1, -1)
+            y, (h, c) = self.lstm(features, (h, c))
+
+            # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
+            s = self.lstm_linear_score(y.view(batch, -1))
+            category_scores.append(s)
+
+        category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category
+        transform_box = torch.stack(transform_box, dim=1)  # the first one is free. size: batch, regions, 2,3
+        return category_scores, transform_box
+
+    @staticmethod
+    def spatial_transformer(input_image, theta):
+        # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
+        # https://blog.csdn.net/qq_39422642/article/details/78870629
+        grids = affine_grid(theta, input_image.size())
+        output_img = grid_sample(input_image, grids)
+        return output_img
 
     def forward(self, x):
         for layer in self.encoder.features[:3]:
@@ -252,6 +300,11 @@ class MobileNetV2Classifier(BaseModule):
         # all feature maps are 1/8 of input size
         x = torch.cat(feature_maps, dim=1)
         del feature_maps
-        x = self.conv_classifier(x)
-        x = x.view(x.size(0), -1)
-        return x
+        x = self.feature_conv(x)
+        category_scores, transform_box = self.cnn_bi_lstm_classifier(x)
+        return category_scores, transform_box
+
+    @staticmethod
+    def predict(category_scores):
+        scores, index = category_scores.max(1)
+        return scores
