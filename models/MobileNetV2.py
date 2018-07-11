@@ -242,7 +242,7 @@ class MobileNetV2Classifier(BaseModule):
         self.anchor_box = FloatTensor([(0, 0), (0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
                                        ])
 
-    def cnn_bi_lstm_classifier(self, input_img):
+    def cnn_lstm_classifier(self, input_img):
         # Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
         # LSTM input: step size is one, feature size is num_class (channels)
 
@@ -301,7 +301,7 @@ class MobileNetV2Classifier(BaseModule):
         x = torch.cat(feature_maps, dim=1)
         del feature_maps
         x = self.feature_conv(x)
-        category_scores, transform_box = self.cnn_bi_lstm_classifier(x)
+        category_scores, transform_box = self.cnn_lstm_classifier(x)
         return category_scores, transform_box
 
     @staticmethod
