@@ -1,0 +1,970 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+        xmlns:osb="http://www.openswatchbook.org/uri/2009/osb"
+        xmlns:dc="http://purl.org/dc/elements/1.1/"
+        xmlns:cc="http://creativecommons.org/ns#"
+        xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+        xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+        xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+        xmlns="http://www.w3.org/2000/svg"
+        width="1600"
+        height="768"
+        viewBox="0 0 1600 768"
+        version="1.1"
+        id="SVGRoot"
+        inkscape:version="0.92.3 (2405546, 2018-03-11)"
+        sodipodi:docname="RFB_featurepooling.svg">
+    <sodipodi:namedview
+            id="base"
+            pagecolor="#ffffff"
+            bordercolor="#666666"
+            borderopacity="1.0"
+            inkscape:pageopacity="0.0"
+            inkscape:pageshadow="2"
+            inkscape:zoom="0.7"
+            inkscape:cx="773.58491"
+            inkscape:cy="340.80157"
+            inkscape:document-units="px"
+            inkscape:current-layer="layer1"
+            showgrid="false"
+            inkscape:window-width="1920"
+            inkscape:window-height="1016"
+            inkscape:window-x="-8"
+            inkscape:window-y="-8"
+            inkscape:window-maximized="1"/>
+    <defs
+            id="defs1020">
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3809"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3807"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3797"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3795"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3791"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3789"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3785"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3783"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3779"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3777"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3773"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3771"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="bspline"
+                id="path-effect3753"
+                is_visible="true"
+                weight="33.333333"
+                steps="2"
+                helper_size="0"
+                apply_no_weight="true"
+                apply_with_weight="true"
+                only_selected="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3751"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3747"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3743"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3741"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3651"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3649"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3645"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3643"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3639"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3637"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3633"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3631"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3299"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3297"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3293"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3291"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3287"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3285"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3281"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3279"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3275"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3273"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="spiro"
+                id="path-effect3269"
+                is_visible="true"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3267"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <inkscape:path-effect
+                effect="simplify"
+                id="path-effect3263"
+                is_visible="true"
+                steps="1"
+                threshold="0.00113885"
+                smooth_angles="360"
+                helper_size="0"
+                simplify_individual_paths="false"
+                simplify_just_coalesce="false"
+                simplifyindividualpaths="false"
+                simplifyJustCoalesce="false"/>
+        <linearGradient
+                id="linearGradient3093"
+                osb:paint="solid">
+            <stop
+                    style="stop-color:#c87137;stop-opacity:1;"
+                    offset="0"
+                    id="stop3091"/>
+        </linearGradient>
+        <inkscape:perspective
+                sodipodi:type="inkscape:persp3d"
+                inkscape:vp_x="-438.07613 : 404.08393 : 1"
+                inkscape:vp_y="-71.398202 : 382.87778 : 0"
+                inkscape:vp_z="548.61967 : 1346.6281 : 1"
+                inkscape:persp3d-origin="51.556876 : 820.16445 : 1"
+                id="perspective1579"/>
+    </defs>
+    <metadata
+            id="metadata1023">
+        <rdf:RDF>
+            <cc:Work
+                    rdf:about="">
+                <dc:format>image/svg+xml</dc:format>
+                <dc:type
+                        rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+                <dc:title/>
+            </cc:Work>
+        </rdf:RDF>
+    </metadata>
+    <g
+            id="layer1"
+            inkscape:groupmode="layer"
+            inkscape:label="Layer 1">
+        <text
+       xml:space="preserve"
+       style="font-size:17.00787354px;line-height:1.25;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-opacity:1;paint-order:markers fill stroke"
+       x="1317.2389"
+       y="295.2486"
+       id="text3591"><tspan
+         sodipodi:role="line"
+         id="tspan3589"
+         x="1317.2389"
+         y="310.76538" /></text>
+        <g
+                id="g4736"
+                transform="matrix(1,0,0,1.3765537,-2,-123.02511)">
+            <g
+                    inkscape:corner7="0.068135931 : -1.5590995 : 0.25 : 1"
+                    inkscape:corner0="0.2241137 : -1.2220359 : 0 : 1"
+                    inkscape:perspectiveID="#perspective1579"
+                    style="fill:#800080;fill-opacity:1;stroke:none;stroke-opacity:1;paint-order:markers fill stroke"
+                    id="g3233"
+                    sodipodi:type="inkscape:box3d">
+                <path
+                        points="54.850413,461.07332 138.92962,326.74736 122.60406,263.14871 35.190691,384.48596 "
+                        d="M 35.190691,384.48596 54.850413,461.07332 138.92962,326.74736 122.60406,263.14871 Z"
+                        inkscape:box3dsidetype="6"
+                        style="fill:#353564;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3235"
+                        sodipodi:type="inkscape:box3dside"/>
+                <path
+                        points="126.53944,476.74709 206.97125,323.55335 138.92962,326.74736 54.850413,461.07332 "
+                        d="m 54.850413,461.07332 71.689027,15.67377 80.43181,-153.19374 -68.04163,3.19401 z"
+                        inkscape:box3dsidetype="13"
+                        style="fill:#afafde;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3243"
+                        sodipodi:type="inkscape:box3dside"/>
+                <path
+                        points="188.71385,252.42894 206.97125,323.55335 138.92962,326.74736 122.60406,263.14871 "
+                        d="m 122.60406,263.14871 66.10979,-10.71977 18.2574,71.12441 -68.04163,3.19401 z"
+                        inkscape:box3dsidetype="11"
+                        style="fill:#e9e9ff;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3245"
+                        sodipodi:type="inkscape:box3dside"/>
+                <path
+                        points="104.00885,388.97583 188.71385,252.42894 122.60406,263.14871 35.190691,384.48596 "
+                        d="m 35.190691,384.48596 68.818159,4.48987 84.705,-136.54689 -66.10979,10.71977 z"
+                        inkscape:box3dsidetype="5"
+                        style="fill:#4d4d9f;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3237"
+                        sodipodi:type="inkscape:box3dside"/>
+                <path
+                        points="126.53944,476.74709 206.97125,323.55335 188.71385,252.42894 104.00885,388.97583 "
+                        d="m 104.00885,388.97583 22.53059,87.77126 80.43181,-153.19374 -18.2574,-71.12441 z"
+                        inkscape:box3dsidetype="14"
+                        style="fill:#d7d7ff;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3241"
+                        sodipodi:type="inkscape:box3dside"/>
+                <path
+                        points="104.00885,388.97583 126.53944,476.74709 54.850413,461.07332 35.190691,384.48596 "
+                        d="m 35.190691,384.48596 68.818159,4.48987 22.53059,87.77126 -71.689027,-15.67377 z"
+                        inkscape:box3dsidetype="3"
+                        style="fill:#8686bf;fill-rule:evenodd;stroke:none;stroke-width:0.77145308;stroke-linejoin:round"
+                        id="path3239"
+                        sodipodi:type="inkscape:box3dside"/>
+            </g>
+            <path
+                    inkscape:original-d="M 200.3678,359.28064 H 334.19863"
+                    inkscape:path-effect="#path-effect3273;#path-effect3275"
+                    inkscape:connector-curvature="0"
+                    id="path3271"
+                    d="M 200.3678,359.28064 H 334.19863"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 334.19863,118.54838 V 359.28064"
+                    inkscape:path-effect="#path-effect3279;#path-effect3281"
+                    inkscape:connector-curvature="0"
+                    id="path3277"
+                    d="M 334.19863,118.54838 V 359.28064"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 334.19863,359.28064 V 515.96065"
+                    inkscape:path-effect="#path-effect3285;#path-effect3287"
+                    inkscape:connector-curvature="0"
+                    id="path3283"
+                    d="M 334.19863,359.28064 V 515.96065"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <rect
+                    y="96.515251"
+                    x="354.59967"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309"
+         y="141.38113"
+         x="447.64478"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="141.38113"
+           x="447.64478"
+           id="tspan3307"
+           sodipodi:role="line">1x1 Conv+ Batch Norm</tspan></text>
+            <rect
+                    y="95.291191"
+                    x="551.26569"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8"
+         y="135.26082"
+         x="642.67871"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="135.26082"
+           x="642.67871"
+           id="tspan3307-4"
+           sodipodi:role="line">3x3 Depthwise Conv</tspan><tspan
+           id="tspan3463"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="152.43536"
+           x="642.67871"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+            <rect
+                    y="218.30948"
+                    x="353.78369"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-3"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-0"
+         y="263.17532"
+         x="446.8288"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="263.17532"
+           x="446.8288"
+           id="tspan3307-3"
+           sodipodi:role="line">1x1 Conv+ Batch Norm</tspan></text>
+            <rect
+                    y="217.08542"
+                    x="550.44965"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9-2"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8-6"
+         y="261.95126"
+         x="643.49475"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           id="tspan3469"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="261.95126"
+           x="643.49475"
+           sodipodi:role="line">1x3 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="217.90149"
+                    x="748.7478"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-12-2"
+         y="262.76733"
+         x="841.79291"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="262.76733"
+           x="841.79291"
+           id="tspan3307-44-5"
+           sodipodi:role="line">3x1 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="218.51346"
+                    x="951.12604"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3-8"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-12-2-5"
+         y="249.50662"
+         x="1041.7229"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="249.50662"
+           x="1044.1381"
+           id="tspan3307-44-5-7"
+           sodipodi:role="line">3x3 Depthwise Conv, </tspan><tspan
+           id="tspan3587"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="266.68118"
+           x="1041.7229"
+           sodipodi:role="line">(dilation 5)</tspan><tspan
+           id="tspan3504"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="283.85571"
+           x="1041.7229"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+            <rect
+                    y="330.00516"
+                    x="353.78369"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-3-2"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-0-1"
+         y="374.87106"
+         x="446.8288"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="374.87106"
+           x="446.8288"
+           id="tspan3307-3-1"
+           sodipodi:role="line">1x1 Conv+ Batch Norm</tspan></text>
+            <rect
+                    y="328.7811"
+                    x="550.44965"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9-2-2"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8-6-3"
+         y="373.64697"
+         x="643.49475"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           id="tspan3469-5"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="373.64697"
+           x="643.49475"
+           sodipodi:role="line">1x5 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="329.59717"
+                    x="748.7478"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3-7"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-12-2-6"
+         y="374.46304"
+         x="841.79291"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="374.46304"
+           x="841.79291"
+           id="tspan3307-44-5-3"
+           sodipodi:role="line">5x1 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="330.2092"
+                    x="951.12604"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3-8-3"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <rect
+                    y="445.06705"
+                    x="350.51941"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-3-29"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-0-3"
+         y="489.93283"
+         x="443.56451"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="489.93283"
+           x="443.56451"
+           id="tspan3307-3-7"
+           sodipodi:role="line">1x1 Conv+ Batch Norm</tspan></text>
+            <rect
+                    y="443.84299"
+                    x="547.18549"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9-2-5"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8-6-9"
+         y="488.70889"
+         x="640.23059"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           id="tspan3469-6"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="488.70889"
+           x="640.23059"
+           sodipodi:role="line">1x7 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="444.65903"
+                    x="745.48364"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3-89"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-12-2-2"
+         y="489.52487"
+         x="838.52881"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="489.52487"
+           x="838.52881"
+           id="tspan3307-44-5-8"
+           sodipodi:role="line">7x1 Conv + Batch Norm</tspan></text>
+            <rect
+                    y="445.27109"
+                    x="947.862"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-6-3-8-6"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-12-2-5-8"
+         y="358.64615"
+         x="1039.5143"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="358.64615"
+           x="1041.9294"
+           id="tspan3307-44-5-7-4"
+           sodipodi:role="line">5x5 Depthwise Conv, </tspan><tspan
+           id="tspan3587-2"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="375.82071"
+           x="1039.5143"
+           sodipodi:role="line">(dilation 17)</tspan><tspan
+           id="tspan3504-1"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="392.99524"
+           x="1039.5143"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+      <text
+         id="text3309-12-2-5-6"
+         y="475.34006"
+         x="1036.2502"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="475.34006"
+           x="1038.6654"
+           id="tspan3307-44-5-7-7"
+           sodipodi:role="line">7x7 Depthwise Conv, </tspan><tspan
+           id="tspan3587-9"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="492.51462"
+           x="1036.2502"
+           sodipodi:role="line">(dilation 29)</tspan><tspan
+           id="tspan3504-2"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="509.68915"
+           x="1036.2502"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+            <path
+                    inkscape:original-d="m 1053.2418,144.19846 138.4868,-2.30811"
+                    inkscape:path-effect="#path-effect3631;#path-effect3633"
+                    inkscape:connector-curvature="0"
+                    id="path3629"
+                    d="m 1053.2418,144.19846 138.4868,-2.30811"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 1191.7286,141.89035 V 475.41286"
+                    inkscape:path-effect="#path-effect3637;#path-effect3639"
+                    inkscape:connector-curvature="0"
+                    id="path3635"
+                    d="M 1191.7286,141.89035 V 475.41286"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="m 1130.5637,480.02909 h 60.0109"
+                    inkscape:path-effect="#path-effect3643;#path-effect3645"
+                    inkscape:connector-curvature="0"
+                    id="path3641"
+                    d="m 1130.5637,480.02909 h 60.0109"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="m 1194.0368,318.46109 h 58.8569"
+                    inkscape:path-effect="#path-effect3649;#path-effect3651"
+                    inkscape:connector-curvature="0"
+                    id="path3647"
+                    d="m 1194.0368,318.46109 h 58.8569"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <rect
+                    y="282.45245"
+                    x="1250.3757"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9-3"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8-8"
+         y="309.49667"
+         x="1340.1731"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="309.49667"
+           x="1340.1731"
+           id="tspan3307-4-0"
+           sodipodi:role="line">Concatenate</tspan><tspan
+           id="tspan3703"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="326.67123"
+           x="1340.1731"
+           sodipodi:role="line">1x1 Conv</tspan><tspan
+           id="tspan3463-2"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="343.84576"
+           x="1340.1731"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+      <flowRoot
+         transform="matrix(0.80784,0,0,0.80784,-17.723274,58.105796)"
+         style="font-size:17.00787354px;line-height:1.25;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-opacity:1;paint-order:markers fill stroke"
+         id="flowRoot3705"
+         xml:space="preserve"><flowRegion
+           id="flowRegion3707"><rect
+             y="198"
+             x="52.857143"
+             height="58.57143"
+             width="274.28571"
+             id="rect3709" /></flowRegion><flowPara
+           style="font-size:26.45669365px"
+           id="flowPara3711">Feature maps</flowPara></flowRoot>
+            <rect
+                    y="560.81097"
+                    x="587.25458"
+                    height="80.788109"
+                    width="179.52916"
+                    id="rect3301-9-6"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3309-8-2"
+         y="600.78064"
+         x="678.66754"
+         style="font-size:7.63313437px;line-height:1.25;text-align:center;text-anchor:middle;fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="600.78064"
+           x="678.66754"
+           id="tspan3307-4-5"
+           sodipodi:role="line">1x1  Conv</tspan><tspan
+           id="tspan3463-7"
+           style="font-size:13.73964024px;fill:#000000;stroke-width:0.80783999"
+           y="617.9552"
+           x="678.66754"
+           sodipodi:role="line"> Batch Norm</tspan></text>
+            <path
+                    inkscape:connector-curvature="0"
+                    id="path3755"
+                    d="M 126.53944,476.74708 V 608.12943 H 580.07833"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:connector-curvature="0"
+                    id="path3757"
+                    d="M 772.80588,609.28349 H 1513.7106 V 347.3125 321.92326"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:connector-curvature="0"
+                    id="path3759"
+                    d="m 1436.3888,320.7692 h 72.7056"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <rect
+                    y="294.22592"
+                    x="1483.7051"
+                    height="54.240692"
+                    width="62.319084"
+                    id="rect3761"
+                    style="fill:#e9ddaf;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"/>
+            <text
+         id="text3765"
+         y="325.61624"
+         x="1513.9413"
+         style="font-size:21.37277603px;line-height:1.25;text-align:center;text-anchor:middle;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.80783999;stroke-opacity:1;paint-order:markers fill stroke"
+         xml:space="preserve"><tspan
+           style="stroke-width:0.80783999"
+           y="325.61624"
+           x="1513.9413"
+           id="tspan3763"
+           sodipodi:role="line">Add</tspan></text>
+            <path
+                    inkscape:connector-curvature="0"
+                    id="path3767"
+                    d="M 334.19863,359.28064 V 317.30703"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 334.19863,359.28064 289.25593,323.0773"
+                    inkscape:path-effect="#path-effect3771;#path-effect3773"
+                    inkscape:connector-curvature="0"
+                    id="path3769"
+                    d="m 334.19863,359.28064 c -14.9809,-12.06778 -29.9618,-24.13556 -44.9427,-36.20334"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="m 334.19863,359.28064 -36.8643,37.65633"
+                    inkscape:path-effect="#path-effect3777;#path-effect3779"
+                    inkscape:connector-curvature="0"
+                    id="path3775"
+                    d="m 334.19863,359.28064 c -12.2881,12.55211 -24.5762,25.10422 -36.8643,37.65633"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 580.07833,608.12943 543.14851,580.43206"
+                    inkscape:path-effect="#path-effect3783;#path-effect3785"
+                    inkscape:connector-curvature="0"
+                    id="path3781"
+                    d="m 580.07833,608.12943 c -12.30994,-9.23246 -24.61988,-18.46491 -36.92982,-27.69737"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="M 580.07833,608.12943 551.22691,638.1349"
+                    inkscape:path-effect="#path-effect3789;#path-effect3791"
+                    inkscape:connector-curvature="0"
+                    id="path3787"
+                    d="m 580.07833,608.12943 c -9.61714,10.00182 -19.23428,20.00365 -28.85142,30.00547"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="m 1481.397,319.61515 -25.3894,-27.69738"
+                    inkscape:path-effect="#path-effect3795;#path-effect3797"
+                    inkscape:connector-curvature="0"
+                    id="path3793"
+                    d="m 1481.397,319.61515 c -8.4631,-9.23244 -16.9263,-18.46494 -25.3894,-27.69738"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+            <path
+                    inkscape:original-d="m 1481.397,319.61515 -20.773,39.23794"
+                    inkscape:path-effect="#path-effect3807;#path-effect3809"
+                    inkscape:connector-curvature="0"
+                    id="path3805"
+                    d="m 1481.397,319.61515 c -6.9243,13.0793 -13.8487,26.15864 -20.773,39.23794"
+                    style="fill:none;stroke:#000000;stroke-width:0.80783999px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"/>
+        </g>
+    </g>
+</svg>

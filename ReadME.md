@@ -23,7 +23,7 @@ The backbone is [Mobile Net V2](https://www.google.com/search?q=mobile+net+v2&ie
 ### Feature Pooling
 The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It is similar to DeepLab v3+'s Atrous Spatial Pyramid (ASP) pooling, but RFB use separable convolution ([Effnet](https://arxiv.org/abs/1801.06434)-like without pooling) with larger kernel size (I choose 3,5,7) followed by  atrous convolution. 
 
-![img](ReadME_imgs/RFB.svg)
+![img](ReadME_imgs/RFB_pooling.svg)
 
 
 ### Decoder
