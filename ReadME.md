@@ -16,12 +16,14 @@ The model contains three parts: encoder, feature pooling, and decoder.
 
 ### Encoder
 The backbone is [Mobile Net V2](https://www.google.com/search?q=mobile+net+v2&ie=utf-8&oe=utf-8&client=firefox-b-1-ab), and I append a [Spatial and Channel Squeeze & Excitation Layer](https://arxiv.org/abs/1803.02579). The original model has width multiplier of 1, and I change it to 2. The number of parameters in the convolution part doubles, but the run time increases from 3 seconds to 7 seconds. In addition, I replace the outstride 16 and 32 to dilataions to enlarge field of view ([DeepLab V3](https://arxiv.org/abs/1706.05587), [DeepLab V3+](https://arxiv.org/abs/1802.02611)) .
-![model](ReadME_imgs/MobileNetV2.png)
+
+![model](ReadME_imgs/MobileNetV2.svg)
 
 
 ### Feature Pooling
 The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It is similar to DeepLab v3+'s Atrous Spatial Pyramid (ASP) pooling, but RFB use separable convolution ([Effnet](https://arxiv.org/abs/1801.06434)-like without pooling) with larger kernel size (I choose 3,5,7) followed by  atrous convolution. 
-![img](ReadME_imgs/RFB.png)
+
+![img](ReadME_imgs/RFB.svg)
 
 
 ### Decoder
