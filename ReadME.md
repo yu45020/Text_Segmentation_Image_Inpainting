@@ -86,7 +86,8 @@ Memory usage: 4 CPUs and 8 images.
 ## Notes on Hyper-parameters 
 * Cyclical learning rate is a great tool but needs to pick optimal base & max learning rate. Learning rate range can be as large as 0.1-1 with few epochs ([Exploring loss function topology with cyclical learning rates](https://arxiv.org/abs/1702.04283)).
 * Weighted binary cross entropy loss may be better than focal loss. 
-Witch cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
+
+Cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 
 |         | AP score (validation images)   |
 | ------------- |:-------------:| 
