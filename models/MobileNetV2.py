@@ -228,12 +228,8 @@ class MobileNetV2Classifier(BaseModule):
         # self.conv_classifier = self.make_conv_classifier(cat_feat_num, num_class)
         self.feature_conv = InvertedResidual(cat_feat_num, num_class, stride=1, expand_ratio=1, dilation=1,
                                              conv_block_fn=Conv_block, activation=self.act_fn, bias=False,
-                                             add_sece=False)
+                                             add_sece=True)
         self.global_avg = nn.AdaptiveAvgPool2d(1)
-
-        # ---------------------------------------------------------------------
-        #               LSTM Part
-        # ---------------------------------------------------------------------
         lstm_hidden = 256
         self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=True)
         self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), self.act_fn)
@@ -251,18 +247,16 @@ class MobileNetV2Classifier(BaseModule):
 
         category_scores = []
         transform_box = []
+        # h = c = torch.zeros(1, batch, self.lstm.hidden_size).cuda()
         features = self.global_avg(img).view(batch, 1, -1)
-
-        # y.size = batch, seq_len (1) , num_direc*hidden_size
-        # h, c size = num_layer*bi-direc, batch, hidden_size
         y, (h, c) = self.lstm(features)
-        for i in range(4 + 1):  # 1 free region and 4 anchor points
-            # use hidden state to find the next region around an anchor point
-            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))
+        #         s = self.lstm_linear_score(y.view(batch, -1))
+        #         category_scores.append(s)
+        for i in range(4 + 1):  # 4 anchor points and repeated 4 times
+            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))  # y.view(batch, -1)
             st_theta = self.st_theta_linear(z).view(batch, 2, 3)
             st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
 
-            # consider scaling only
             st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
             st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clone()
 
@@ -270,10 +264,13 @@ class MobileNetV2Classifier(BaseModule):
 
             img = self.spatial_transformer(input_img, st_theta)
             features = self.global_avg(img).view(batch, 1, -1)
+
+            # y.size = batch, seq_len (1) , num_direc*hidden_size
+            # h, c size = num_layer*bi-direc, batch, hidden_size
             y, (h, c) = self.lstm(features, (h, c))
 
-            # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
-            s = self.lstm_linear_score(y.view(batch, -1))
+            s = self.lstm_linear_score(
+                y.view(batch, -1))  # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
             category_scores.append(s)
 
         category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category
@@ -285,6 +282,7 @@ class MobileNetV2Classifier(BaseModule):
         # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
         # https://blog.csdn.net/qq_39422642/article/details/78870629
         grids = affine_grid(theta, input_image.size())
+
         output_img = grid_sample(input_image, grids)
         return output_img
 
@@ -304,7 +302,6 @@ class MobileNetV2Classifier(BaseModule):
         category_scores, transform_box = self.cnn_lstm_classifier(x)
         return category_scores, transform_box
 
-    @staticmethod
-    def predict(category_scores):
+    def predict(self, category_scores):
         scores, index = category_scores.max(1)
         return scores

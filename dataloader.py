@@ -27,22 +27,20 @@ brightness_difference = 0.4  # in [0,1]
 
 
 class TextSegmentationData(Dataset):
-    def __init__(self, img_folder, max_img=False, img_size=(512, 512)):
+    def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
         # get raw images
-        self.images = glob.glob(os.path.join(img_folder, "raw/*"))
+
+        self.images = self.images = glob.glob(os.path.join(image_folder, "raw/*"))
         assert len(self.images) > 0
-        self.max_img = max_img if max_img else len(self.images)
-        # if len(self.images) > max_img and max_img:
-        #     self.images = random.choices(self.images, k=max_img)
-        self.images = random.choices(self.images, k=self.max_img)
+        if max_images:
+            self.images = random.choices(self.images, k=max_images)
         print("Find {} images. ".format(len(self.images)))
         self.grayscale = Grayscale(num_output_channels=1)
-        self.img_size = img_size
+        self.img_size = image_size
         # image augment
-        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
                                     ToTensor(),
-                                    Normalize(mean=[0.485, 0.456, 0.406],
-                                              std=[0.229, 0.224, 0.225])])
+                                    Normalize(mean=mean, std=std)])
 
     def __len__(self):
         return len(self.images)
@@ -53,10 +51,12 @@ class TextSegmentationData(Dataset):
         img_raw = Image.open(img_file).convert('RGB')
         img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
         img_raw, img_mask = self.process_images(img_raw, img_clean)
+        # recommend to use nn.MaxPool2d(kernel_size=7, stride=1, padding=3) on the mask
+        # so regions around the words can also be whited ou
         return img_raw, img_mask
 
     def process_images(self, raw, clean):
-        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.1, 2.0), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
         clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
@@ -71,16 +71,16 @@ class TextSegmentationData(Dataset):
         mask = self.grayscale(mask)  # single channel
         mask = to_tensor(mask)
         mask = mask > brightness_difference
-        return mask.long()
+        return mask.float()  # .long()
 
 
 class DanbooruDataset(Dataset):
-    def __init__(self, image_foler, name_tag_dict, mean, std,
+    def __init__(self, image_folder, name_tag_dict, mean, std,
                  image_size=512, max_images=False, num_class=1000):
         super(DanbooruDataset, self).__init__()
-        assert image_size // 16
+        assert image_size % 16 == 0
 
-        self.images = glob.glob(os.path.join(image_foler, '*'))
+        self.images = glob.glob(os.path.join(image_folder, '*'))
         assert len(self.images) > 0
         if max_images:
             self.images = random.choices(self.images, k=max_images)
@@ -106,7 +106,7 @@ class DanbooruDataset(Dataset):
     @staticmethod
     def transformer(mean, std):
         m = Compose([RandomGrayscale(p=0.2),
-                     # RandomHorizontalFlip(p=0.2),
+                     # RandomHorizontalFlip(p=0.2), don't use them since label locations are not available
                      # RandomVerticalFlip(p=0.2),
                      ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
                      ToTensor(),
@@ -115,15 +115,17 @@ class DanbooruDataset(Dataset):
 
 
 class EvaluateSet(Dataset):
-    def __init__(self, img_folder=None):
+    def __init__(self, mean, std, img_folder=None, resize=512):
         self.eval_imgs = [glob.glob(img_folder + "**/*.{}".format(i), recursive=True) for i in ['jpg', 'jpeg', 'png']]
         self.eval_imgs = list(chain.from_iterable(self.eval_imgs))
+        assert resize % 8 == 0
+        self.resize = resize
         self.transformer = Compose([ToTensor(),
                                     transforms.Lambda(lambda x: x.unsqueeze(0))
                                     ])
         self.normalizer = Compose([transforms.Lambda(lambda x: x.squeeze(0)),
-                                   Normalize(mean=[0.485, 0.456, 0.406],
-                                             std=[0.229, 0.224, 0.225]),
+                                   Normalize(mean=mean,
+                                             std=std),
                                    transforms.Lambda(lambda x: x.unsqueeze(0))
                                    ])
         print("Find {} test images. ".format(len(self.eval_imgs)))
@@ -137,21 +139,21 @@ class EvaluateSet(Dataset):
 
     def resize_pad_tensor(self, pil_img):
         origin = self.transformer(pil_img)
-        fix_len = 512
-        long = max(pil_img.size)
+        fix_len = self.resize
+        long = min(pil_img.size)
         ratio = fix_len / long
-        new_size = tuple(map(lambda x: int(x * ratio), pil_img.size))
+        new_size = tuple(map(lambda x: int(x * ratio) // 8 * 8, pil_img.size))
         img = pil_img.resize(new_size, Image.BICUBIC)
         # img = pil_img
         img = self.transformer(img)
 
         _, _, h, w = img.size()
-        if fix_len > w:
+        if w > fix_len:
 
-            boarder_pad = (0, fix_len - w, 0, 0)
+            boarder_pad = (0, w - fix_len, 0, 0)
         else:
 
-            boarder_pad = (0, 0, 0, fix_len - h)
+            boarder_pad = (0, 0, 0, h - fix_len)
 
         img = pad(img, boarder_pad, value=0)
         mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
@@ -159,6 +161,7 @@ class EvaluateSet(Dataset):
 
     @staticmethod
     def resize_mask(padded_values, origin_size):
+        # resize generated mask back to the input image size
         unpad = tuple(map(lambda x: -x, padded_values))
         upsampler = nn.Upsample(size=tuple(reversed(origin_size)), mode='bilinear', align_corners=False)
         m = Compose([

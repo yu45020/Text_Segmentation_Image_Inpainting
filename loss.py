@@ -1,12 +1,9 @@
-# focal loss
-# https://arxiv.org/pdf/1708.02002.pdf
-
 import torch
 import torchvision
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.modules.loss import _assert_no_grad
 
-# copy from  https://github.com/clcarwin/focal_loss_pytorch
 from models.BaseModels import BaseModule
 
 use_cuda = torch.cuda.is_available()
@@ -15,10 +12,14 @@ LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 Tensor = FloatTensor
 
 
-class FocalLoss(nn.Module):
+class MultiClassFocalLoss(nn.Module):
+    # focal loss
+    # https://arxiv.org/pdf/1708.02002.pdf
+    # copy from  https://github.com/clcarwin/focal_loss_pytorch
+
     # alpha=0.75 gives the best for this project
     def __init__(self, gamma=2.0, alpha=0.25, size_average=True):
-        super(FocalLoss, self).__init__()
+        super(MultiClassFocalLoss, self).__init__()
         self.gamma = gamma
         self.alpha = alpha
         if isinstance(alpha, (float, int)):
@@ -36,8 +37,9 @@ class FocalLoss(nn.Module):
             input = input.contiguous().view(-1, input.size(2))  # N,H*W,C => N*H*W,C
         target = target.view(-1, 1)
 
-        logpt = F.log_softmax(input)
+        logpt = F.log_softmax(input, dim=1)
         logpt = logpt.gather(1, target)
+
         logpt = logpt.view(-1)
         pt = logpt.data.exp()
 
@@ -54,15 +56,137 @@ class FocalLoss(nn.Module):
             return loss.sum()
 
 
+class BinaryFocalLoss(nn.BCEWithLogitsLoss):
+    # gamma 0 gives the best AP scores
+    def __init__(self, gamma=0, background_weights=1, words_weights=2):
+        super(BinaryFocalLoss, self).__init__(size_average=True, reduce=False)
+        self.gamma = gamma
+        self.background_weights = background_weights
+        self.words_weights = words_weights
+
+    def forward(self, input, target):
+        input = self.flatten_images(input)
+        target = self.flatten_images(target)
+        weights = torch.where(target > 0, torch.ones_like(target) * self.words_weights,  # words are 1
+                              torch.ones_like(target) * self.background_weights)
+        pt = F.logsigmoid(-input * (target * 2 - 1))
+        loss = F.binary_cross_entropy_with_logits(input, target, weight=weights, size_average=True, reduce=False)
+
+        loss = (pt * self.gamma).exp() * loss
+        return loss.mean()
+
+    @staticmethod
+    def flatten_images(x):
+        assert x.dim() == 4 and x.size(1) == 1
+        x = x.view(x.size(0), x.size(1), -1)  # N,C,H,W => N,C,H*W
+        x = x.transpose(1, 2)  # N,C,H*W => N,H*W,C
+        x = x.contiguous().view(-1, x.size(2))
+        return x
+
+
+class SoftBootstrapCrossEntropy(nn.BCELoss):
+    """
+    TRAINING DEEP NEURAL NETWORKS ON NOISY LABELS WITH BOOTSTRAPPING (https://arxiv.org/pdf/1412.6596.pdf)
+    # Tensorflow: https://github.com/tensorflow/models/blob/f87a58cd96d45de73c9a8330a06b2ab56749a7fa/research/object_detection/core/losses.py#L275-L336
+    ++++   Use with caution ++++
+    with this loss, the model may learn to detect words that are not labeled.
+    but  not all words are necessary whited out
+    """
+
+    def __init__(self, beta=0.95, background_weight=1, words_weight=2,
+                 size_average=True, reduce=True):
+        super(SoftBootstrapCrossEntropy, self).__init__(size_average=size_average, reduce=reduce)
+        self.beta = beta
+        self.background_weight = background_weight
+        self.words_weight = words_weight
+        self.size_average = size_average
+        self.reduce = reduce
+
+    def forward(self, input, target):
+        _assert_no_grad(target)
+        # if a pixel's probability > 0.5, then assume it is true since labels might be noisy
+        input = self.flatten_images(input)
+        target = self.flatten_images(target)
+        weights = torch.where(target > 0, torch.ones_like(target) * self.words_weight,  # words are 1
+                              torch.ones_like(target) * self.background_weight)
+
+        bootstrap_target = self.beta * target + (1 - self.beta) * (F.sigmoid(input) > 0.5).float()
+        return F.binary_cross_entropy_with_logits(input, bootstrap_target, weight=weights,
+                                                  size_average=self.size_average, reduce=self.reduce)
+
+    @staticmethod
+    def flatten_images(x):
+        assert x.dim() == 4 and x.size(1) == 1
+        x = x.view(x.size(0), x.size(1), -1)  # N,C,H,W => N,C,H*W
+        x = x.transpose(1, 2)  # N,C,H*W => N,H*W,C
+        x = x.contiguous().view(-1, x.size(2))
+        return x
+
+
+# +++++++++++++++++++++++++++++++++++++
+#           Loss for classification with LSTM
+# -------------------------------------
+
+# reference: Multi-label Image Recognition by Recurrently Discovering Attentional Regions
+# by Wang, chen,  Li, Xu, and Lin
+
+class BCERegionLoss(nn.Module):
+    def __init__(self):
+        super(BCERegionLoss, self).__init__()
+        self.anchor_box = FloatTensor([(0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)]).unsqueeze(-1)
+        self.scale_alpha = FloatTensor([1])
+        self.positive_beta = FloatTensor([0.2])
+        self.bce = nn.BCEWithLogitsLoss()
+
+    def scale_loss(self, scale):
+        #         assert scale.size(1) == scale.size(2)
+        sx = scale[:, 0, 0]
+        ls = torch.pow(F.relu(torch.abs(sx) - self.scale_alpha), 2)
+        sy = scale[:, 1, 1]
+        ly = torch.pow(F.relu(torch.abs(sy) - self.scale_alpha), 2)
+        positive_loss = F.relu(self.positive_beta - sx) + F.relu(self.positive_beta - sy)
+
+        loss = 0.1 * positive_loss + ls + ly
+        return loss.sum().view(1)
+
+    def anchor_loss(self, attention_region):
+        # input: num_class, 2 (anchor x, y) , 1   -self.anchor_box
+        distance = 0.5 * torch.pow(attention_region - self.anchor_box, 2).sum(1)
+        return 0.01 * distance.sum().view(1)
+
+    def forward(self, input, target):
+        category, transform_box = input
+        #         scores, index = category.max(1)
+        #         bce_loss = self.bce(scores, target)
+        # all regions' predictions are checked
+        bce_loss = FloatTensor([0])
+        for i in range(category.size(1)):
+            bce_loss = bce_loss + self.bce(category[:, i, :], target)
+        bce_loss = bce_loss / category.size(1)
+
+        regions = transform_box[:, 1:, :, 2:]
+        region_loss = torch.cat([self.anchor_loss(i) for i in regions]).mean()
+
+        scales = transform_box[:, :, :, :2]
+        scale_loss = torch.cat([self.scale_loss(i) for i in scales]).mean()
+
+        # spatial transform theta matrix (batch, 2, 3)
+        # sum over the second axis so that transformed regions will not be 0 padded
+        boundary = torch.abs(transform_box).sum(-1)
+        boundary = torch.pow(F.relu(boundary - 1), 2)
+        boundary_loss = 0.5 * boundary.view(boundary.size(0), -1).sum(-1).mean()
+        return bce_loss, bce_loss + 0.01 * region_loss + 0.05 * scale_loss + 0.5 * boundary_loss
+
+
 # +++++++++++++++++++++++++++++++++++++
 #           Loss for inpainting
 # -------------------------------------
-
-class InapintingLoss(nn.Module):
+# will be changed
+class InpaintingLoss(nn.Module):
     # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv/blob/master/loss.py
     # Image Inpainting for Irregular Holes Using Partial Convolutions
     def __init__(self, feature_encoder, feature_range=3):
-        super(InapintingLoss, self).__init__()
+        super(InpaintingLoss, self).__init__()
         self.l1 = nn.L1Loss()
         self.feature_encoder = FeatureExtractor(feature_encoder, feature_range)
 
@@ -144,55 +268,3 @@ def total_variation_loss(image):
     loss = torch.mean(torch.abs(image[:, :, :, :-1] - image[:, :, :, 1:])) + \
            torch.mean(torch.abs(image[:, :, :-1, :] - image[:, :, 1:, :]))
     return loss
-
-
-# +++++++++++++++++++++++++++++++++++++
-#           Loss for classification with LSTM
-# -------------------------------------
-# Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
-
-
-class BCERegionLoss(nn.Module):
-    def __init__(self):
-        super(BCERegionLoss, self).__init__()
-        self.anchor_box = FloatTensor([(0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)]).unsqueeze(-1)
-        self.scale_alpha = FloatTensor([1])
-        self.positive_beta = FloatTensor([0.2])
-        self.bce = nn.BCEWithLogitsLoss()
-
-    def scale_loss(self, scale):
-        #         assert scale.size(1) == scale.size(2)
-        sx = scale[:, 0, 0]
-        ls = torch.pow(F.relu(torch.abs(sx) - self.scale_alpha), 2)
-        sy = scale[:, 1, 1]
-        ly = torch.pow(F.relu(torch.abs(sy) - self.scale_alpha), 2)
-        positive_loss = F.relu(self.positive_beta - sx) + F.relu(self.positive_beta - sy)
-
-        loss = 0.1 * positive_loss + ls + ly
-        return loss.sum().view(1)
-
-    def anchor_loss(self, attention_region):
-        # input: num_class, 2 (anchor x, y) , 1   -self.anchor_box
-        distance = 0.5 * torch.pow(attention_region - self.anchor_box, 2).sum(1)
-        return 0.01 * distance.sum().view(1)
-
-    def forward(self, input, target):
-        category, transform_box = input
-        #         scores, index = category.max(1)
-        #         bce_loss = self.bce(scores, target)
-        bce_loss = FloatTensor([0])
-        for i in range(category.size(1)):
-            bce_loss = bce_loss + self.bce(category[:, i, :], target)
-        bce_loss = bce_loss / category.size(1)
-
-        regions = transform_box[:, 1:, :, 2:]
-        region_loss = torch.cat([self.anchor_loss(i) for i in regions]).mean()
-        scales = transform_box[:, :, :, :2]
-        scale_loss = torch.cat([self.scale_loss(i) for i in scales]).mean()
-
-        # spatial transform theta matrix (batch, 2, 3)
-        # sum over the second axis so that transformed regions will not be 0 padded
-        boundary = torch.abs(transform_box).sum(-1)
-        boundary = torch.pow(F.relu(boundary - 1), 2)
-        boundary_loss = 0.5 * boundary.view(boundary.size(0), -1).sum(-1).mean()
-        return bce_loss, bce_loss + 0.01 * region_loss + 0.05 * scale_loss + 0.5 * boundary_loss
