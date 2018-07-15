@@ -35,7 +35,9 @@ Deocder follows Deeplab V3+: features are up scaled x2 and concatenated with 1/4
 ##
 I don't use a text-detection model such as Textbox Plus Plus, Single Shot MultiBox Detector, or Faster R-CNN because I don't have images that have bounding boxes on text regions. Real world image databases don't fit this project's goal.
 
-To generate training data, I use two copies of images: one is the origin image, and the other one is text clean. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows the text region. The idea is inspired by He, etc's  [Single Shot Text Detector with Regional Attention](https://arxiv.org/abs/1709.00138) and He,etc's [Mask-R-CNN](https://arxiv.org/abs/1703.06870). Both papers show a pixel level object detection. 
+To generate training data, I use two copies of images: one is the origin image, and the other one is text clean. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows the text region. Applying a max pooling on the mask is better because regions around texts will also be erased out. By experiment, on a 512x512 image, max pool with kernel size 7, stride 1, and padding 3 is the best. 
+
+The idea is inspired by He, etc's  [Single Shot Text Detector with Regional Attention](https://arxiv.org/abs/1709.00138) and He,etc's [Mask-R-CNN](https://arxiv.org/abs/1703.06870). Both papers show a pixel level object detection. 
 
 ##
 
@@ -86,8 +88,7 @@ Memory usage: 4 CPUs and 8 images.
 ## Notes on Hyper-parameters 
 * Cyclical learning rate is a great tool but needs to pick optimal base & max learning rate. Learning rate range can be as large as 0.1-1 with few epochs ([Exploring loss function topology with cyclical learning rates](https://arxiv.org/abs/1702.04283)).
 * Weighted binary cross entropy loss may be better than focal loss. 
-
-Cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
+Witch cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 
 |         | AP score (validation images)   |
 | ------------- |:-------------:| 
@@ -100,4 +101,14 @@ Cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 | Gamma  2, Background:1, words:1     | 0.2431| 
 | Gamma  0, Background:1, words:5     | 0.2437 | 
 
-* Weight decay should be smaller than 1e-3. 1e-4 is better than 1e-5 when using cyclical learning rate and SGD (with nesterov). 
+* Weight decay should be smaller than 1e-3. 1e-4 is better than 1e-5 when use cyclical learning rate and SGD (with nesterov). 
+
+### Difference on Up-sampling 
+* bilinear up-sample
+![img](ReadME_imgs/up sample.png)
+
+* transpose convolution
+![img](ReadME_imgs/transpose%20conv.png)
+
+* pixel shuffling 
+![img](ReadME_imgs/pixel%20shuffle.png)
