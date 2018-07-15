@@ -99,4 +99,4 @@ Witch cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 | Gamma  2, Background:1, words:1     | 0.2431| 
 | Gamma  0, Background:1, words:5     | 0.2437 | 
 
-* Weight decay should be smaller than 1e-3. 1e-4 is better than 1e-5 when use cyclical learning rate and SGD (with nesterov). 
+* Weight decay should be smaller than 1e-3. 1e-4 is better than 1e-5 when using cyclical learning rate and SGD (with nesterov). 
