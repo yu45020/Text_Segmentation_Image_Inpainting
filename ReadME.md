@@ -106,7 +106,7 @@ With cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 
 ### Difference on Up-sampling 
 * bilinear up-sample
-![img](ReadME_imgs/up sample.png)
+![img](ReadME_imgs/up%20sample.png)
 
 * transpose convolution
 ![img](ReadME_imgs/transpose%20conv.png)
