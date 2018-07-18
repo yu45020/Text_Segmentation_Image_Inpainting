@@ -24,8 +24,8 @@ model = model.eval()
 
 evalset = EvaluateSet(mean=[0.4935, 0.4563, 0.4544],
                       std=[0.3769, 0.3615, 0.3566],
-                      img_folder='images/color/',
-                      resize=512)
+                      img_folder='images/test_imgs/',
+                      resize=600)
 
 
 def process(eval_img):
@@ -47,3 +47,4 @@ if __name__ == '__main__':
     with ThreadPool(cpu_count()) as p:
         p.map(process, evalset)
     print("Runtime :{}".format(time.time() - a))
+

@@ -18,16 +18,18 @@ Tensor = FloatTensor
 
 
 class MobileNetV2(BaseModule):
-    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False, ):
+    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False,
+                 image_channel=3):
 
         super(MobileNetV2, self).__init__()
         self.add_partial = add_partial
-        self.conv_block = Conv_block if not add_partial else partial_gated_conv_block
+        # self.conv_block = Conv_block
         self.res_block = InvertedResidual if not add_partial else PartialInvertedResidual
         self.act_fn = activation
         self.bias = bias
         self.width_mult = width_mult
         self.out_stride = 32  # 1/32 of input size
+        self.image_channel = image_channel
         self.inverted_residual_setting = [
             # t, c, n, s, dial
             [1, 16, 1, 1, 1],
@@ -45,9 +47,9 @@ class MobileNetV2(BaseModule):
         in_channel = self._make_divisible(32 * self.width_mult, divisor=8)
 
         # first_layer
-        features = [nn.Sequential(*self.conv_block(3, in_channel, kernel_size=3, stride=2,
-                                                   padding=(3 - 1) // 2, bias=self.bias,
-                                                   BN=True, activation=self.act_fn))]
+        features = [nn.Sequential(*Conv_block(self.image_channel, in_channel, kernel_size=3, stride=2,
+                                              padding=(3 - 1) // 2, bias=self.bias,
+                                              BN=True, activation=self.act_fn))]
 
         for t, c, n, s, d in settings:
             out_channel = self._make_divisible(c * self.width_mult, divisor=8)
@@ -89,7 +91,8 @@ class MobileNetV2(BaseModule):
         print("{}/{} layers in the encoder are freezed.".format(len(self.features) - free_last_blocks,
                                                                 len(self.features)))
 
-    def _make_divisible(self, v, divisor=8, min_value=None):
+    @staticmethod
+    def _make_divisible(v, divisor=8, min_value=None):
         # https://github.com/tensorflow/models/blob/7367d494135368a7790df6172206a58a2a2f3d40/research/slim/nets/mobilenet/mobilenet.py#L62
         if min_value is None:
             min_value = divisor
@@ -126,10 +129,10 @@ class MobileNetV2(BaseModule):
 
 
 class InvertedResidual(BaseModule):
-    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=Conv_block,
+    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation,
                  activation=nn.ReLU6(), bias=False, add_sece=False):
         super(InvertedResidual, self).__init__()
-        self.conv_bloc = conv_block_fn
+        # self.conv_bloc = Conv_block
         self.stride = stride
         self.act_fn = activation
         self.bias = bias
@@ -143,15 +146,15 @@ class InvertedResidual(BaseModule):
     def make_body(self, in_channel, out_channel, stride, expand_ratio, dilation, add_sece):
         # standard convolution
         mid_channel = in_channel * expand_ratio
-        m = self.conv_bloc(in_channel, mid_channel,
-                           1, 1, 0, bias=self.bias,
-                           BN=True, activation=self.act_fn)
+        m = Conv_block(in_channel, mid_channel,
+                       1, 1, 0, bias=self.bias,
+                       BN=True, activation=self.act_fn)
         # depth-wise separable convolution
-        m += self.conv_bloc(mid_channel, mid_channel, 3, stride, padding=1 + (dilation - 1),
-                            dilation=dilation, groups=mid_channel, bias=self.bias,
-                            BN=True, activation=self.act_fn)
+        m += Conv_block(mid_channel, mid_channel, 3, stride, padding=1 + (dilation - 1),
+                        dilation=dilation, groups=mid_channel, bias=self.bias,
+                        BN=True, activation=self.act_fn)
         # linear to preserve info : see the section: linear bottleneck. Removing the activation improves the result
-        m += self.conv_bloc(mid_channel, out_channel, 1, 1, 0, bias=self.bias, BN=True, activation=None)
+        m += Conv_block(mid_channel, out_channel, 1, 1, 0, bias=self.bias, BN=True, activation=None)
         if add_sece:
             m += [SpatialChannelSqueezeExcitation(out_channel, reduction=16, activation=self.act_fn)]
         return nn.Sequential(*m)
@@ -162,45 +165,57 @@ class InvertedResidual(BaseModule):
         else:
             return self.conv(x)
 
-    def forward_checkpoint(self, x):
-        with torch.no_grad():
-            return self.forward(x)
 
+class PartialInvertedResidual(BaseModule):
+    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation,
+                 activation=nn.ReLU6(), bias=False, add_sece=False):
+        super(PartialInvertedResidual, self).__init__()
 
-class PartialInvertedResidual(InvertedResidual):
-    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation, conv_block_fn=partial_gated_conv_block,
-                 activation=nn.ReLU6(), bias=False):
-        super(PartialInvertedResidual, self).__init__(in_channel=in_channel,
-                                                      out_channel=out_channel,
-                                                      stride=stride,
-                                                      expand_ratio=expand_ratio,
-                                                      dilation=dilation,
-                                                      conv_block_fn=conv_block_fn)
+        self.stride = stride
         self.act_fn = activation
         self.bias = bias
+        self.in_channels = in_channel
+        self.out_channels = out_channel
+        # assert stride in [1, 2]
 
-    def forward(self, args):
+        self.res_connect = self.stride == 1 and in_channel == out_channel
+        self.conv = self.make_body(in_channel, out_channel, stride, expand_ratio, dilation, add_sece)
+
+    def make_body(self, in_channel, out_channel, stride, expand_ratio, dilation, add_sece):
+        # standard convolution
+        mid_channel = in_channel * expand_ratio
+        m = Conv_block(in_channel, mid_channel,
+                       1, 1, 0, bias=self.bias,
+                       BN=False, activation=self.act_fn)
+
+        m += partial_gated_conv_block(mid_channel, mid_channel, 3, stride, padding=1 + (dilation - 1),
+                                      dilation=dilation, groups=mid_channel, bias=self.bias,
+                                      BN=False, activation=self.act_fn)
+
+        m += Conv_block(mid_channel // 2, out_channel, 1, 1, 0, bias=self.bias, BN=False, activation=None)
+        if add_sece:
+            m += [SpatialChannelSqueezeExcitation(out_channel, reduction=16, activation=self.act_fn)]
+        return nn.Sequential(*m)
+
+    def forward(self, x):
         if self.res_connect:
-            x, mask = args
-            out, out_mask = self.conv((x, mask))
-            out = out + x
-
-            out_mask = out_mask + mask
-            # out_mask = torch.clamp(out_mask, min=0, max=1)
-            return out, out_mask
+            return x + self.conv(x)
         else:
-            return self.conv(args)
+            return self.conv(x)
 
 
 class DilatedMobileNetV2(MobileNetV2):
-    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False, ):
+    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False,
+                 image_channel=3):
         super(DilatedMobileNetV2, self).__init__(width_mult=width_mult, activation=activation,
-                                                 bias=bias, add_sece=add_sece, add_partial=add_partial, )
+                                                 bias=bias, add_sece=add_sece, add_partial=add_partial,
+                                                 image_channel=image_channel)
         self.add_partial = add_partial
         self.bias = bias
         self.width_mult = width_mult
         self.act_fn = activation
         self.out_stride = 8
+        self.image_channel = image_channel
         # # Rethinking Atrous Convolution for Semantic Image Segmentation
         self.inverted_residual_setting = [
             # t, c, n, s, dila  # input output
@@ -216,7 +231,7 @@ class DilatedMobileNetV2(MobileNetV2):
 
 
 class MobileNetV2Classifier(BaseModule):
-    def __init__(self, num_class, width_mult=1.4, add_sece=False):
+    def __init__(self, num_class, width_mult=2, add_sece=False):
         super(MobileNetV2Classifier, self).__init__()
         self.num_class = num_class
         self.act_fn = nn.LeakyReLU(0.3, inplace=True)  # nn.SELU(inplace=True)

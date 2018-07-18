@@ -4,6 +4,7 @@ import random
 import re
 from itertools import chain
 
+import numpy as np
 import torch
 from PIL import Image, ImageChops
 from torch import nn
@@ -19,18 +20,19 @@ LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
 Tensor = FloatTensor
 """
 Filter difference in brightness, to some degree. 
+If you have perfect pairs (only the text parts are removed), then set it to 0. 
 If this value is set very high, say 0.8, some words are filtered out;
 if too small, say <0.1, the mask may have noisy white points, and the model will fail to converge. 
 VERY IMPORTANT: Generate masks before dumping data into the model. Noisy data or almost black masks hurt performances.
 """
-brightness_difference = 0.4  # in [0,1]
+brightness_difference = 0.35  # in [0,1]
 
 
 class TextSegmentationData(Dataset):
     def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
         # get raw images
 
-        self.images = self.images = glob.glob(os.path.join(image_folder, "raw/*"))
+        self.images = glob.glob(os.path.join(image_folder, "raw/*"))
         assert len(self.images) > 0
         if max_images:
             self.images = random.choices(self.images, k=max_images)
@@ -61,9 +63,10 @@ class TextSegmentationData(Dataset):
         clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
-        mask_tensor_long = self.get_mask(raw_img, clean_img)
+        mask_tensor = self.get_mask(raw_img, clean_img)
+
         raw_img = self.transformer(raw_img)
-        return raw_img, mask_tensor_long
+        return raw_img, mask_tensor
 
     def get_mask(self, raw_pil, clean_pil):
         # use PIL ! It will take care the difference in brightness/contract
@@ -72,6 +75,53 @@ class TextSegmentationData(Dataset):
         mask = to_tensor(mask)
         mask = mask > brightness_difference
         return mask.float()  # .long()
+
+
+class ImageInpaintingData(TextSegmentationData):
+    def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
+        super(ImageInpaintingData, self).__init__(image_folder, False, False,
+                                                  max_images, image_size)
+        self.transformer = Compose([ToTensor(),
+                                    Normalize(mean=mean, std=std)])
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, item):
+        img_file = self.images[item]
+        # avoid multiprocessing on the same image
+        img_raw = Image.open(img_file).convert('RGB')
+        img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
+        img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
+        return img_raw, masks, img_clean
+
+    def process_images(self, raw, clean):
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
+        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
+        clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
+
+        # get mask before further image augment
+        mask = self.get_mask(raw_img, clean_img)
+        mask_t = to_tensor(mask)
+        mask_t = (mask_t > 0).float()
+        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=3, stride=1, padding=1)
+        mask_t = mask_t.byte()
+
+        # color jitter
+        color_jitter = ColorJitter.get_params(brightness=0.2, contrast=0.2, saturation=0, hue=0)
+
+        mask = color_jitter(mask)
+        clean_img = color_jitter(clean_img)
+        raw_img = ImageChops.difference(mask, clean_img)
+
+        return self.transformer(raw_img), mask_t, self.transformer(clean_img)
+
+    def get_mask(self, raw_pil, clean_pil):
+        mask = ImageChops.difference(raw_pil, clean_pil)
+        mask_array = np.array(mask)
+        mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
+        mask = Image.fromarray(mask_array)
+        return mask
 
 
 class DanbooruDataset(Dataset):
