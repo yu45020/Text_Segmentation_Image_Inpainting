@@ -78,11 +78,11 @@ class TextSegmentationData(Dataset):
 
 
 class ImageInpaintingData(TextSegmentationData):
-    def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
+    def __init__(self, image_folder, max_images=False, image_size=(512, 512)):
         super(ImageInpaintingData, self).__init__(image_folder, False, False,
                                                   max_images, image_size)
-        self.transformer = Compose([ToTensor(),
-                                    Normalize(mean=mean, std=std)])
+        self.transformer = Compose([ToTensor()
+                                    ])
 
     def __len__(self):
         return len(self.images)
@@ -104,17 +104,18 @@ class ImageInpaintingData(TextSegmentationData):
         mask = self.get_mask(raw_img, clean_img)
         mask_t = to_tensor(mask)
         mask_t = (mask_t > 0).float()
-        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=3, stride=1, padding=1)
-        mask_t = mask_t.byte()
+        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=5, stride=1, padding=2)
+        # mask_t = mask_t.byte()
 
-        # color jitter
-        color_jitter = ColorJitter.get_params(brightness=0.2, contrast=0.2, saturation=0, hue=0)
-
-        mask = color_jitter(mask)
-        clean_img = color_jitter(clean_img)
         raw_img = ImageChops.difference(mask, clean_img)
+        # color jitter
+        # color_jitter = ColorJitter.get_params(brightness=0.2, contrast=0.2, saturation=0, hue=0)
 
-        return self.transformer(raw_img), mask_t, self.transformer(clean_img)
+        # mask = color_jitter(mask)
+        # clean_img = color_jitter(clean_img)
+        #
+        # mask: 0 is holes , 1 is ground truth
+        return self.transformer(raw_img), 1 - mask_t, self.transformer(clean_img)
 
     def get_mask(self, raw_pil, clean_pil):
         mask = ImageChops.difference(raw_pil, clean_pil)

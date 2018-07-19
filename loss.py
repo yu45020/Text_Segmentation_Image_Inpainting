@@ -189,17 +189,25 @@ class InpaintingLoss(nn.Module):
         super(InpaintingLoss, self).__init__()
         self.l1 = nn.L1Loss()
         self.feature_encoder = FeatureExtractor(feature_encoder, feature_range)
+        # self.normalize = Normalize(mean=[0.485, 0.456, 0.406],
+        #                            std=[0.229, 0.224, 0.225])
+        self.mean = FloatTensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+        self.std = FloatTensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
     def forward(self, raw_input, mask, output, origin):
-        comp_img = raw_input * mask + output * (1 - mask)
+        comp_img = mask * raw_input + (1 - mask) * output
+
+        # per-pixel loss
+        loss_validate = self.l1(mask * output, mask * origin)
+        loss_hole = self.l1((1 - mask) * output, (1 - mask) * origin)
+
+        # total variation (smoothing penalty)
+        loss_total_var = total_variation_loss(comp_img)
+
         # extra features
         feature_comp = self.feature_encoder(comp_img)
         feature_output = self.feature_encoder(output)
         feature_origin = self.feature_encoder(origin)
-
-        loss_validate = self.l1(mask * output, mask * origin)
-        loss_hole = self.l1((1 - mask) * output, (1 - mask) * origin)
-        loss_total_var = total_variation_loss(comp_img)  # total variation (smoothing penalty)
 
         # perceptual loss
         loss_perceptual_1 = sum(map(lambda x, y: self.l1(x, y), feature_comp, feature_origin))
@@ -235,13 +243,13 @@ class FeatureExtractor(nn.Module):
         return out
 
 
-class Vgg19Extractor(BaseModule):
+class VggExtractor(BaseModule):
     def __init__(self, pretrained=True):
-        super(Vgg19Extractor, self).__init__()
-        vgg19 = torchvision.models.vgg16(pretrained=pretrained)
-        feature1 = nn.Sequential(*vgg19.features[:5])
-        feature2 = nn.Sequential(*vgg19.features[5:10])
-        feature3 = nn.Sequential(*vgg19.features[10:17])
+        super(VggExtractor, self).__init__()
+        vgg = torchvision.models.vgg16(pretrained=pretrained)
+        feature1 = nn.Sequential(*vgg.features[:5])
+        feature2 = nn.Sequential(*vgg.features[5:10])
+        feature3 = nn.Sequential(*vgg.features[10:17])
         self.features = nn.Sequential(*[feature1, feature2, feature3])
         for param in self.features.parameters():
             param.requires_grad = False

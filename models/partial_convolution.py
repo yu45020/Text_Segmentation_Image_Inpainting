@@ -5,48 +5,67 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from torch.nn.functional import avg_pool2d, upsample
+from torch.nn.functional import avg_pool2d
 
 from .BaseModels import BaseModule
 
 
 class PartialConv(BaseModule):
-    # reference:Image Inpainting for Irregular Holes Using Partial Convolutions
+    # reference:
+    # Image Inpainting for Irregular Holes Using Partial Convolutions
     # http://masc.cs.gmu.edu/wiki/partialconv/show?time=2018-05-24+21%3A41%3A10
     # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv/blob/master/net.py
     # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py
-    # mask is binary, 0 is masked point, 1 is not
+    # mask is binary, 0 is holes; 1 is not
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True):
+                 padding=0, dilation=1, groups=1, bias=True, activation=None):
         super(PartialConv, self).__init__()
+        self.act_fn = activation
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
 
         self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
-                                   padding, dilation, groups, bias)
-        torch.nn.init.constant(self.mask_conv.weight, 1.0)
-        torch.nn.init.constant(self.mask_conv.bias, 0.0)
+                                   padding, dilation, groups, bias=False)
+        torch.nn.init.constant_(self.mask_conv.weight, 1.0)
+        # torch.nn.init.constant_(self.mask_conv.bias, 0.0)
         for param in self.mask_conv.parameters():
             param.requires_grad = False
 
     def forward(self, args):
         x, mask = args
         output = self.feature_conv(x * mask)
-        # memory efficient
         output_bias = self.feature_conv.bias.view(1, -1, 1, 1).expand_as(output)
 
-        output_mask = self.mask_conv(mask)  # mask sums
+        dummy_ones = torch.ones_like(output)
+        dummy_zeros = torch.zeros_like(output)
+
+        with torch.no_grad():
+            output_mask = self.mask_conv(mask)  # mask sums
+            ones = self.mask_conv(torch.ones_like(mask))
 
         update_holes = output_mask != 0
-        keep_holes = output_mask == 0
-        output[update_holes] = (output[update_holes] - output_bias[update_holes]) \
-                               / output_mask[update_holes] + output_bias[[update_holes]]
 
-        output[keep_holes] = 0
+        mask_sum = torch.where(update_holes, output_mask, 0.01 * dummy_ones)
 
-        output_mask[update_holes] = 1.0
-        output_mask[keep_holes] = 0.0
-        return (output, output_mask)
+        # make sure if no holes, scale is 1. See 2nd reference
+        scale = ones / mask_sum
+        output_pre = (output - output_bias) * scale + output_bias
+
+        output = torch.where(update_holes, output_pre, dummy_zeros)
+        output_mask = update_holes.float()
+        if self.act_fn:
+            output = self.act_fn(output)
+        return output, output_mask
+
+
+def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
+                              dilation=1, groups=1, bias=True, BN=False, activation=None):
+    m = [PartialConv(in_channels, out_channels, kernel_size, stride,
+                     padding, dilation, groups, bias, activation)]
+    if BN:
+        raise NotImplemented
+
+    return m
 
 
 class DoubleAvdPool(nn.AvgPool2d):
@@ -59,45 +78,14 @@ class DoubleAvdPool(nn.AvgPool2d):
         return tuple(map(lambda x: avg_pool2d(x, kernel_size=self.kernel_size), args))
 
 
-class DoubleUpSample(nn.Upsample):
-    def __init__(self, scale_factor, mode):
-        super(DoubleUpSample, self).__init__(scale_factor=scale_factor, mode=mode)
-        self.scale_factor = scale_factor
-        self.mode = mode
-
-    def forward(self, args):
-        return tuple(map(lambda x: upsample(x, scale_factor=self.scale_factor, mode=self.mode), args))
-
-
-class DoubleActivation(nn.Module):
-    def __init__(self, activation):
-        super(DoubleActivation, self).__init__()
-        self.activation = activation
+class DoubleUpSample(nn.Module):
+    def __init__(self, scale_factor, mode='nearest'):
+        super(DoubleUpSample, self).__init__()
+        self.upsample = nn.Upsample(scale_factor=scale_factor, mode=mode)
 
     def forward(self, args):
         x, mask = args
-        return self.activation(x), mask
-
-
-class DoubleNorm(nn.Module):
-    def __init__(self, norm):
-        super(DoubleNorm, self).__init__()
-        self.norm = norm
-
-    def forward(self, args):
-        x, mask = args
-        return self.norm(x), mask
-
-
-def partial_conv_block(in_channels, out_channels, kernel_size, stride=1,
-                       padding=0, dilation=1, groups=1, bias=True, BN=True, activation=None):
-    m = [PartialConv(in_channels, out_channels, kernel_size, stride,
-                     padding, dilation, groups, bias)]
-    if BN:
-        m.append(DoubleNorm(nn.BatchNorm2d(out_channels)))
-    if activation:
-        m.append(DoubleActivation(activation))
-    return m
+        return self.upsample(x), self.upsample(mask)
 
 
 class PartialGatedConv(BaseModule):
@@ -125,4 +113,5 @@ def partial_gated_conv_block(in_channels, out_channels, kernel_size, stride=1,
         m.append(nn.BatchNorm2d(out_channels))
 
     return m
+
 
