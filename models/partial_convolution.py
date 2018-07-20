@@ -18,14 +18,15 @@ class PartialConv(BaseModule):
     # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py
     # mask is binary, 0 is holes; 1 is not
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True, activation=None):
+                 padding=0, dilation=1, groups=1, bias=True, ):
         super(PartialConv, self).__init__()
-        self.act_fn = activation
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
 
-        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
-                                   padding, dilation, groups, bias=False)
+        # self.mask_conv = partial(F.conv2d, weight=torch.ones_like(self.feature_conv.weight),
+        #                          bias=None, stride=stride, padding=padding, dilation=dilation, groups=groups)
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups,
+                                   bias=False)
         torch.nn.init.constant_(self.mask_conv.weight, 1.0)
         # torch.nn.init.constant_(self.mask_conv.bias, 0.0)
         for param in self.mask_conv.parameters():
@@ -36,36 +37,53 @@ class PartialConv(BaseModule):
         output = self.feature_conv(x * mask)
         output_bias = self.feature_conv.bias.view(1, -1, 1, 1).expand_as(output)
 
-        dummy_ones = torch.ones_like(output)
-        dummy_zeros = torch.zeros_like(output)
-
         with torch.no_grad():
             output_mask = self.mask_conv(mask)  # mask sums
             ones = self.mask_conv(torch.ones_like(mask))
 
-        update_holes = output_mask != 0
+        update_holes = output_mask > 0
+        mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
 
-        mask_sum = torch.where(update_holes, output_mask, 0.01 * dummy_ones)
-
-        # make sure if no holes, scale is 1. See 2nd reference
-        scale = ones / mask_sum
+        # See 2nd reference
+        scale = torch.div(ones, mask_sum)
         output_pre = (output - output_bias) * scale + output_bias
 
-        output = torch.where(update_holes, output_pre, dummy_zeros)
+        output = torch.where(update_holes, output_pre, torch.zeros_like(output))
         output_mask = update_holes.float()
-        if self.act_fn:
-            output = self.act_fn(output)
+
         return output, output_mask
 
 
 def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
-                              dilation=1, groups=1, bias=True, BN=False, activation=None):
+                              dilation=1, groups=1, bias=True, BN=True, activation=True):
     m = [PartialConv(in_channels, out_channels, kernel_size, stride,
-                     padding, dilation, groups, bias, activation)]
+                     padding, dilation, groups, bias)]
     if BN:
-        raise NotImplemented
+        m += [PartialActivatedBN(out_channels, activation)]
+    if not BN and activation:
+        m += [PartialActivation(activation)]
 
-    return m
+    return nn.Sequential(*m)
+
+
+class PartialActivatedBN(BaseModule):
+    def __init__(self, channel, act_fn):
+        super(PartialActivatedBN, self).__init__()
+        self.bn_act = nn.Sequential(nn.BatchNorm2d(channel), act_fn)
+
+    def forward(self, args):
+        x, mask = args
+        return self.bn_act(x), mask
+
+
+class PartialActivation(BaseModule):
+    def __init__(self, activation):
+        super(PartialActivation, self).__init__()
+        self.act_fn = activation
+
+    def forward(self, args):
+        x, mask = args
+        return self.act_fn(x), mask
 
 
 class DoubleAvdPool(nn.AvgPool2d):
@@ -92,26 +110,36 @@ class PartialGatedConv(BaseModule):
     # mask is binary, 0 is masked point, 1 is not
     # https://github.com/JiahuiYu/generative_inpainting/issues/62
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True, activation=nn.SELU()):
+                 padding=0, dilation=1, groups=1, bias=True, BN=False, activation=nn.SELU()):
         super(PartialGatedConv, self).__init__()
-        assert out_channels % 2 == 0
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
-        self.act_fn = activation
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                                   padding, dilation, groups, bias)
+        if BN:
+            self.bn_act = nn.Sequential(nn.BatchNorm2d(out_channels), activation)
+        else:
+            self.bn_acf = activation
 
     def forward(self, x):
         output = self.feature_conv(x)
-        feature, gate = output.chunk(2, dim=1)
-        return self.act_fn(feature) * F.sigmoid(gate)
+        mask = self.mask_conv(x)
+        return self.bn_act(output * F.sigmoid(mask))
+
+
+class PartialGatedActivatedBN(BaseModule):
+    def __init__(self, channel, activation):
+        super(PartialGatedActivatedBN, self).__init__()
+        self.bn_act = nn.Sequential(nn.BatchNorm2d(channel),
+                                    activation)
+
+    def forward(self, x):
+        return self.bn_act(x)
 
 
 def partial_gated_conv_block(in_channels, out_channels, kernel_size, stride=1,
-                             padding=0, dilation=1, groups=1, bias=True, BN=False, activation=nn.SELU()):
+                             padding=0, dilation=1, groups=1, bias=True, BN=True, activation=None):
     m = [PartialGatedConv(in_channels, out_channels, kernel_size, stride,
-                          padding, dilation, groups, bias, activation)]
-    if BN:
-        m.append(nn.BatchNorm2d(out_channels))
+                          padding, dilation, groups, bias, BN, activation)]
 
-    return m
-
-
+    return nn.Sequential(*m)

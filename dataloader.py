@@ -7,6 +7,7 @@ from itertools import chain
 import numpy as np
 import torch
 from PIL import Image, ImageChops
+from PIL import ImageDraw
 from torch import nn
 from torch.nn.functional import pad
 from torch.utils.data import Dataset
@@ -25,7 +26,7 @@ If this value is set very high, say 0.8, some words are filtered out;
 if too small, say <0.1, the mask may have noisy white points, and the model will fail to converge. 
 VERY IMPORTANT: Generate masks before dumping data into the model. Noisy data or almost black masks hurt performances.
 """
-brightness_difference = 0.35  # in [0,1]
+brightness_difference = 0.4  # in [0,1]
 
 
 class TextSegmentationData(Dataset):
@@ -78,11 +79,14 @@ class TextSegmentationData(Dataset):
 
 
 class ImageInpaintingData(TextSegmentationData):
-    def __init__(self, image_folder, max_images=False, image_size=(512, 512)):
+    def __init__(self, image_folder, max_images=False, image_size=(512, 512), random_crop=True):
         super(ImageInpaintingData, self).__init__(image_folder, False, False,
                                                   max_images, image_size)
-        self.transformer = Compose([ToTensor()
+        self.transformer = Compose([ToTensor(),
+                                    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                     ])
+        self.random_mask = RandomMask(image_size[0])
+        self.random_crop = random_crop
 
     def __len__(self):
         return len(self.images)
@@ -91,6 +95,8 @@ class ImageInpaintingData(TextSegmentationData):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
+        img_raw = self.random_mask.draw(img_raw)
+
         img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
         img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
         return img_raw, masks, img_clean
@@ -115,6 +121,56 @@ class ImageInpaintingData(TextSegmentationData):
         # clean_img = color_jitter(clean_img)
         #
         # mask: 0 is holes , 1 is ground truth
+        return self.transformer(raw_img), 1 - mask_t, self.transformer(clean_img)
+
+    def get_mask(self, raw_pil, clean_pil):
+        mask = ImageChops.difference(raw_pil, clean_pil)
+        mask_array = np.array(mask)
+        mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
+        mask = Image.fromarray(mask_array)
+        return mask
+
+
+class TestDataset(TextSegmentationData):
+    def __init__(self, image_folder, max_images=False, image_size=(512, 512), random_crop=True):
+        super(TestDataset, self).__init__(image_folder, False, False,
+                                          max_images, image_size)
+        self.transformer = Compose([ToTensor(),
+                                    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+                                    ])
+        self.random_mask = RandomMask(image_size[0])
+        self.random_crop = random_crop
+        self.images = self.gen_img(0)
+
+    def __len__(self):
+        return len(self.images)
+
+    def __getitem__(self, item):
+        return self.images
+
+    def gen_img(self, item):
+        img_file = self.images[item]
+        # avoid multiprocessing on the same image
+        img_raw = Image.open(img_file).convert('RGB')
+        img_raw = self.random_mask.draw(img_raw)
+
+        img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
+        img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
+        return img_raw, masks, img_clean
+
+    def process_images(self, raw, clean):
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
+        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
+        clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
+
+        # get mask before further image augment
+        mask = self.get_mask(raw_img, clean_img)
+        mask_t = to_tensor(mask)
+        mask_t = (mask_t > 0).float()
+        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=5, stride=1, padding=2)
+        # mask_t = mask_t.byte()
+
+        raw_img = ImageChops.difference(mask, clean_img)
         return self.transformer(raw_img), 1 - mask_t, self.transformer(clean_img)
 
     def get_mask(self, raw_pil, clean_pil):
@@ -221,3 +277,41 @@ class EvaluateSet(Dataset):
             transforms.Lambda(lambda x: x.expand(-1, 3, -1, -1) > 0)
         ])
         return m
+
+
+class RandomMask:
+    def __init__(self, size, offset=10):
+        self.size = size - offset
+        self.offset = offset
+
+    def draw(self, pil_img):
+        draw = ImageDraw.Draw(pil_img)
+        # draw liens
+        for i in range(np.random.randint(1, 4)):
+            cords = np.random.randint(self.offset, self.size, 4)
+            width = np.random.randint(5, 15)
+            draw.line(cords.tolist(), width=width, fill=255)
+        # draw circles
+        for i in range(np.random.randint(1, 4)):
+            cords = np.random.randint(self.offset, self.size, 2)
+            cords.sort()
+            ex = np.random.randint(10, 50, 2)
+            draw.ellipse(np.concatenate([cords, cords + ex]).tolist(), fill=255)
+        return pil_img
+
+# import random
+# from random import randint
+# import numpy as np
+# from PIL import Image
+# from torchvision.transforms import RandomCrop
+#
+# img = Image.open("images/236.png_out.jpg")
+# crop = RandomCrop(256)
+# img_c = crop(img)
+# mask = RandomMask(256, offset=10)
+# img_c = mask.draw(img_c)
+# img_c.show()
+#
+# draw = ImageDraw.Draw(img_c)
+# draw.polygon([(100, 100), (130, 200)], fill=255)
+# img_c.show()

@@ -191,8 +191,6 @@ class InpaintingLoss(nn.Module):
         self.feature_encoder = FeatureExtractor(feature_encoder, feature_range)
         # self.normalize = Normalize(mean=[0.485, 0.456, 0.406],
         #                            std=[0.229, 0.224, 0.225])
-        self.mean = FloatTensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
-        self.std = FloatTensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
 
     def forward(self, raw_input, mask, output, origin):
         comp_img = mask * raw_input + (1 - mask) * output
