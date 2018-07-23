@@ -22,11 +22,11 @@ class PartialConv(BaseModule):
         super(PartialConv, self).__init__()
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
-
+        nn.init.kaiming_normal_(self.feature_conv.weight)
         # self.mask_conv = partial(F.conv2d, weight=torch.ones_like(self.feature_conv.weight),
         #                          bias=None, stride=stride, padding=padding, dilation=dilation, groups=groups)
-        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups,
-                                   bias=False)
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                                   padding, dilation, groups, bias=False)
         torch.nn.init.constant_(self.mask_conv.weight, 1.0)
         # torch.nn.init.constant_(self.mask_conv.bias, 0.0)
         for param in self.mask_conv.parameters():
@@ -39,19 +39,45 @@ class PartialConv(BaseModule):
 
         with torch.no_grad():
             output_mask = self.mask_conv(mask)  # mask sums
-            ones = self.mask_conv(torch.ones_like(mask))
+            # ones = self.mask_conv(torch.ones_like(mask))
 
         update_holes = output_mask > 0
         mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
 
         # See 2nd reference
-        scale = torch.div(ones, mask_sum)
-        output_pre = (output - output_bias) * scale + output_bias
+        # scale = torch.div(ones, mask_sum)
+        # aa = torch.where(update_holes, scale, torch.zeros_like(scale))
+        # print(f"max value of scale is {torch.max(aa)}")
+        output_pre = (output - output_bias) / mask_sum + output_bias
 
         output = torch.where(update_holes, output_pre, torch.zeros_like(output))
-        output_mask = update_holes.float()
+        new_mask = update_holes.float()
+        # output = output_pre * new_mask
 
-        return output, output_mask
+        return output, new_mask
+
+
+class SoftPartialConv(BaseModule):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True, ):
+        super(SoftPartialConv, self).__init__()
+        self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                                      padding, dilation, groups, bias)
+
+        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups,
+                                   bias=False)
+
+    def forward(self, args):
+        x, mask = args
+        output = self.feature_conv(x)
+
+        mask_output = self.mask_conv(1 - mask)  # holes are 1; else 0
+        mask_attention = F.tanh(mask_output)  # non-holes positions are 0
+        output = output + mask_attention * output
+
+        valid_idx = mask_attention == 0
+        new_mask = torch.where(valid_idx, torch.ones_like(output), F.sigmoid(mask_output))
+        return output, new_mask
 
 
 def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
@@ -69,7 +95,10 @@ def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, 
 class PartialActivatedBN(BaseModule):
     def __init__(self, channel, act_fn):
         super(PartialActivatedBN, self).__init__()
-        self.bn_act = nn.Sequential(nn.BatchNorm2d(channel), act_fn)
+        if act_fn:
+            self.bn_act = nn.Sequential(nn.BatchNorm2d(channel), act_fn)
+        else:
+            self.bn_act = nn.Sequential(nn.BatchNorm2d(channel))
 
     def forward(self, args):
         x, mask = args

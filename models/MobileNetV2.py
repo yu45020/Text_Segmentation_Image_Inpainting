@@ -9,7 +9,7 @@ from torch.utils.checkpoint import checkpoint
 
 from models.common import SpatialChannelSqueezeExcitation
 from .BaseModels import BaseModule, Conv_block
-from .partial_convolution import partial_gated_conv_block
+from .partial_convolution import partial_convolution_block
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
@@ -167,41 +167,34 @@ class InvertedResidual(BaseModule):
 
 
 class PartialInvertedResidual(BaseModule):
-    def __init__(self, in_channel, out_channel, stride, expand_ratio, dilation,
-                 activation=nn.ReLU6(), bias=False, add_sece=False):
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
+                 dilation=1, expansion=1, BN=True, activation=True, bias=True, *args, **kwargs):
         super(PartialInvertedResidual, self).__init__()
+        self.res_connect = stride == 1 and in_channels == out_channels and dilation == 1
 
-        self.stride = stride
-        self.act_fn = activation
-        self.bias = bias
-        self.in_channels = in_channel
-        self.out_channels = out_channel
-        # assert stride in [1, 2]
+        self.conv = self.make_body(in_channels, out_channels, kernel_size, stride, padding,
+                                   dilation, expansion, BN, activation, bias)
 
-        self.res_connect = self.stride == 1 and in_channel == out_channel
-        self.conv = self.make_body(in_channel, out_channel, stride, expand_ratio, dilation, add_sece)
+    @staticmethod
+    def make_body(in_channels, out_channels, kernel_size, stride, padding,
+                  dilation, expansion, BN, activation, bias):
+        mid_channel = int(in_channels * expansion)
 
-    def make_body(self, in_channel, out_channel, stride, expand_ratio, dilation, add_sece):
-        # standard convolution
-        mid_channel = in_channel * expand_ratio
-        m = Conv_block(in_channel, mid_channel,
-                       1, 1, 0, bias=self.bias,
-                       BN=False, activation=self.act_fn)
+        layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1, BN=BN, activation=activation,
+                                           bias=bias)]
+        layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
+                                            groups=mid_channel, BN=BN, activation=activation, bias=bias)]
+        layer += [partial_convolution_block(mid_channel, out_channels, 1, 1, 0, 1, BN=BN, activation=None, bias=bias)]
+        return nn.Sequential(*layer)
 
-        m += partial_gated_conv_block(mid_channel, mid_channel, 3, stride, padding=1 + (dilation - 1),
-                                      dilation=dilation, groups=mid_channel, bias=self.bias,
-                                      BN=False, activation=self.act_fn)
-
-        m += Conv_block(mid_channel // 2, out_channel, 1, 1, 0, bias=self.bias, BN=False, activation=None)
-        if add_sece:
-            m += [SpatialChannelSqueezeExcitation(out_channel, reduction=16, activation=self.act_fn)]
-        return nn.Sequential(*m)
-
-    def forward(self, x):
+    def forward(self, args):
+        x, mask = args
+        out_x, out_mask = self.conv((x, mask))
         if self.res_connect:
-            return x + self.conv(x)
-        else:
-            return self.conv(x)
+            out_x = x + out_x
+            out_mask = mask + out_mask
+            out_mask = torch.clamp(out_mask, min=0, max=1)
+        return out_x, out_mask
 
 
 class DilatedMobileNetV2(MobileNetV2):

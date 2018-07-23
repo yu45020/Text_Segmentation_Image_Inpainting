@@ -78,15 +78,29 @@ class TextSegmentationData(Dataset):
         return mask.float()  # .long()
 
 
-class ImageInpaintingData(TextSegmentationData):
-    def __init__(self, image_folder, max_images=False, image_size=(512, 512), random_crop=True):
-        super(ImageInpaintingData, self).__init__(image_folder, False, False,
-                                                  max_images, image_size)
-        self.transformer = Compose([ToTensor(),
+class ImageInpaintingData(Dataset):
+    def __init__(self, image_folder, max_images=False, image_size=(512, 512), add_random_masks=False):
+        super(ImageInpaintingData, self).__init__()
+
+        if isinstance(image_folder, str):
+            self.images = glob.glob(os.path.join(image_folder, "raw/*"))
+        else:
+            self.images = list(chain.from_iterable([glob.glob(os.path.join(i, "raw/*")) for i in image_folder]))
+        assert len(self.images) > 0
+
+        if max_images:
+            self.images = random.choices(self.images, k=max_images)
+        print(f"Find {len(self.images)} images.")
+
+        self.img_size = image_size
+
+        self.transformer = Compose([RandomGrayscale(p=0.4),
+                                    ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+                                    ToTensor(),
                                     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                     ])
+        self.add_random_masks = add_random_masks
         self.random_mask = RandomMask(image_size[0])
-        self.random_crop = random_crop
 
     def __len__(self):
         return len(self.images)
@@ -95,8 +109,6 @@ class ImageInpaintingData(TextSegmentationData):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
-        img_raw = self.random_mask.draw(img_raw)
-
         img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
         img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
         return img_raw, masks, img_clean
@@ -104,30 +116,30 @@ class ImageInpaintingData(TextSegmentationData):
     def process_images(self, raw, clean):
         i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
+        if self.add_random_masks:
+            raw_img = self.random_mask.draw(raw_img)
+
         clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
         mask = self.get_mask(raw_img, clean_img)
         mask_t = to_tensor(mask)
-        mask_t = (mask_t > 0).float()
-        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=5, stride=1, padding=2)
-        # mask_t = mask_t.byte()
+        mask_t = (mask_t > brightness_difference).float()
+        mask_t = torch.max(mask_t, dim=0, keepdim=True)
+        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
 
-        raw_img = ImageChops.difference(mask, clean_img)
-        # color jitter
-        # color_jitter = ColorJitter.get_params(brightness=0.2, contrast=0.2, saturation=0, hue=0)
+        binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
+        binary_mask = binary_mask.expand(3, -1, -1)
+        clean_img = self.transformer(clean_img)
+        corrupted_img = clean_img * binary_mask
+        return corrupted_img, binary_mask, clean_img
 
-        # mask = color_jitter(mask)
-        # clean_img = color_jitter(clean_img)
-        #
-        # mask: 0 is holes , 1 is ground truth
-        return self.transformer(raw_img), 1 - mask_t, self.transformer(clean_img)
-
-    def get_mask(self, raw_pil, clean_pil):
+    @staticmethod
+    def get_mask(raw_pil, clean_pil):
         mask = ImageChops.difference(raw_pil, clean_pil)
-        mask_array = np.array(mask)
-        mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
-        mask = Image.fromarray(mask_array)
+        # mask_array = np.array(mask)
+        # mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
+        # mask = Image.fromarray(mask_array)
         return mask
 
 

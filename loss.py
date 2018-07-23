@@ -181,7 +181,7 @@ class BCERegionLoss(nn.Module):
 # +++++++++++++++++++++++++++++++++++++
 #           Loss for inpainting
 # -------------------------------------
-# will be changed
+
 class InpaintingLoss(nn.Module):
     # https://github.com/naoto0804/pytorch-inpainting-with-partial-conv/blob/master/loss.py
     # Image Inpainting for Irregular Holes Using Partial Convolutions
@@ -220,7 +220,7 @@ class InpaintingLoss(nn.Module):
         loss_style = loss_style_1 + loss_style_2
 
         # weights are recommended in the paper P7
-        loss = 1.0 * loss_validate + 6.0 * loss_hole + \
+        loss = 1.0 * loss_validate + 10.0 * loss_hole + \
                0.1 * loss_total_var + 0.05 * loss_perceptual + 120 * loss_style
         return loss
 
@@ -258,6 +258,21 @@ class VggExtractor(BaseModule):
             img = layer(img)
             result.append(img)
         return result
+
+
+class ResNetExtractor(BaseModule):
+    def __init__(self, pretrained=True):
+        super(ResNetExtractor, self).__init__()
+        resnet = torchvision.models.resnet50(pretrained=pretrained)
+        feature1 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1)
+        feature2 = nn.Sequential(resnet.layer2)
+        feature3 = nn.Sequential(resnet.layer3)
+        self.features = nn.Sequential(*[feature1, feature2, feature3])
+        for param in self.features.parameters():
+            param.requires_grad = False
+
+    def forward(self, *x):
+        raise NotImplemented
 
 
 def gram_matrix(feat):
