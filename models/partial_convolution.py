@@ -9,6 +9,13 @@ from torch.nn.functional import avg_pool2d
 
 from .BaseModels import BaseModule
 
+try:
+    from .inplace_abn import InPlaceABN  # only works in GPU
+
+    inplace_batch_norm = True
+except ImportError:
+    inplace_batch_norm = False
+
 
 class PartialConv(BaseModule):
     # reference:
@@ -18,7 +25,7 @@ class PartialConv(BaseModule):
     # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py
     # mask is binary, 0 is holes; 1 is not
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True, ):
+                 padding=0, dilation=1, groups=1, bias=True):
         super(PartialConv, self).__init__()
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
@@ -44,10 +51,9 @@ class PartialConv(BaseModule):
         update_holes = output_mask > 0
         mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
 
-        # See 2nd reference
+        # See 2nd reference, but takes more time to run
         # scale = torch.div(ones, mask_sum)
-        # aa = torch.where(update_holes, scale, torch.zeros_like(scale))
-        # print(f"max value of scale is {torch.max(aa)}")
+
         output_pre = (output - output_bias) / mask_sum + output_bias
 
         output = torch.where(update_holes, output_pre, torch.zeros_like(output))
@@ -95,10 +101,18 @@ def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, 
 class PartialActivatedBN(BaseModule):
     def __init__(self, channel, act_fn):
         super(PartialActivatedBN, self).__init__()
-        if act_fn:
-            self.bn_act = nn.Sequential(nn.BatchNorm2d(channel), act_fn)
+
+        if inplace_batch_norm:
+            if act_fn:
+                self.bn_act = InPlaceABN(channel, activation="leaky_relu", slope=0.3)
+            else:
+                self.bn_act = InPlaceABN(channel, activation='none')
+
         else:
-            self.bn_act = nn.Sequential(nn.BatchNorm2d(channel))
+            if act_fn:
+                self.bn_act = nn.Sequential(nn.BatchNorm2d(channel), act_fn)
+            else:
+                self.bn_act = nn.Sequential(nn.BatchNorm2d(channel))
 
     def forward(self, args):
         x, mask = args

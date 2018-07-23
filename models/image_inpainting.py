@@ -9,13 +9,13 @@ from .partial_convolution import partial_convolution_block, DoubleUpSample
 class ImageFill(BaseModule):
     def __init__(self):
         super(ImageFill, self).__init__()
-        self.act_fn = nn.LeakyReLU(0.3)
+        self.act_fn = nn.LeakyReLU(0.3)  # be consistent with the setting in place batch norm
         # up-sampling must be nearest s.t. masks are either 0 or 1
         self.double_upscale = DoubleUpSample(scale_factor=2, mode='nearest')
         encoder = [
             # i, o, k, s, p, d, t, n
             [64, 128, 3, 2, 1, 1, 4, 2],
-            [128, 256, 3, 2, 1, 1, 4, 3],
+            [128, 256, 3, 2, 1, 1, 4, 3],  # <---usually the updated masks have no holes after this block
             [256, 256, 3, 2, 1, 1, 4, 2],
 
         ]
@@ -42,7 +42,6 @@ class ImageFill(BaseModule):
         ]
         self.decoder = nn.Sequential(*self.make_layers(decoder),
                                      partial_convolution_block(32 + 3, 3, 3, 1, 1, 1, BN=False, activation=False))
-        self.sigmoid = nn.Sigmoid()
 
     def make_layers(self, settings):
         # similar to mobile net v2's inverted residual block
@@ -96,22 +95,5 @@ class ImageFill(BaseModule):
             x_h = torch.cat([x_up, feature_x.pop(-1)], dim=1)
             mask_h = torch.cat([mask_up, feature_mask.pop(-1)], dim=1)
             x, mask = layer((x_h, mask_h))
-        # based on small sample training, sigmoid makes training easier
+
         return x
-
-
-#
-# model = ImageFill()
-# model.total_parameters()
-# x = torch.randn(1, 3, 512, 512)
-# mask = torch.randn(1, 3, 512, 512) == 0
-# mask = mask.float()
-# # #
-# import time
-#
-# st = time.time()
-# with torch.no_grad():
-#     a = model((x, mask))
-#     # a = model(x)
-# print(time.time() - st)
-# a.size()
