@@ -59,17 +59,17 @@ class PartialConv(BaseModule):
             #     assert torch.equal(a / torch.max(output_mask), b)
             #     assert torch.equal(a.expand_as(output_mask), output_mask)
             #     assert torch.equal(b.expand_as(mask), mask)
-
-        update_holes = output_mask > 0
-        mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
+        no_update_holes = output_mask == 0
+        mask_sum = output_mask.masked_fill_(no_update_holes, 1.0)
 
         # See 2nd reference, but takes more time to run
         # scale = torch.div(ones, mask_sum)
 
         output_pre = (output - output_bias) / mask_sum + output_bias
+        output = output_pre.masked_fill_(no_update_holes, 0.0)
 
-        output = torch.where(update_holes, output_pre, torch.zeros_like(output))
-        new_mask = update_holes.float()
+        new_mask = torch.ones_like(output)
+        new_mask = new_mask.masked_fill_(no_update_holes, 0.0)
         # output = output_pre * new_mask
 
         return output, new_mask
