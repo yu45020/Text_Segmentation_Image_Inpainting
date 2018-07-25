@@ -20,11 +20,12 @@ The model contains three parts: encoder, feature pooling, and decoder.
 ### Encoder
 The backbone is [Mobile Net V2](https://www.google.com/search?q=mobile+net+v2&ie=utf-8&oe=utf-8&client=firefox-b-1-ab), and I append a [Spatial and Channel Squeeze & Excitation Layer](https://arxiv.org/abs/1803.02579). The original model has width multiplier of 1, and I change it to 2. The number of parameters in the convolution part doubles, but the run time increases from 3 seconds to 7 seconds. In addition, I replace the outstride 16 and 32 blocks to dilatation to enlarge field of view ([DeepLab V3](https://arxiv.org/abs/1706.05587), [DeepLab V3+](https://arxiv.org/abs/1802.02611)) .
 
+* There are some minor differences from the [current implementation](https://github.com/yu45020/Text_Segmentation_Image_Inpainting/blob/master/models/MobileNetV2.py#L20). I will update the model illustrations later. 
 ![model](ReadME_imgs/MobileNetV2.svg)
 
 
 ### Feature Pooling
-The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It is similar to DeepLab v3+'s Atrous Spatial Pyramid (ASP) pooling, but RFB use separable convolution ([Effnet](https://arxiv.org/abs/1801.06434)-like without pooling) with larger kernel size (I choose 3,5,7) followed by  atrous convolution. 
+The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It is similar to DeepLab v3+'s Atrous Spatial Pyramid (ASP) pooling, but RFB use separable convolution ([Effnet](https://arxiv.org/abs/1801.06434)-like without pooling) with larger kernel size (I choose 3,5,7) followed by atrous convolution. 
 
 ![img](ReadME_imgs/RFB_pooling.svg)
 
@@ -53,8 +54,50 @@ More examples will be added after I obtain authors' consent.
 
 
 ## Image Inpainting
-I have not started this part yet. I plan use the first model to generate more training data for this part.
-The model will be a UNet-like architecture, but all convolutions will be swapped by gated partial convolutions. Details can be found in Yu, etc's paper [Free-Form Image Inpainting with Gated Convolution](https://arxiv.org/abs/1806.03589) & [ Generative Image Inpainting with Contextual Attention](https://arxiv.org/abs/1801.07892) and Liu, etc's paper [ Image Inpainting for Irregular Holes Using Partial Convolutions](https://arxiv.org/abs/1804.07723). These papers are very interesting and show promising results. 
+The model structure is  U-Net like, but all convolutions are replaced by the partial convolution from Liu, etc's paper [Image Inpainting for Irregular Holes Using Partial Convolutions](https://arxiv.org/abs/1804.07723), which is similar to a weighted convolution with respect to image holes. 
+
+My implementation is  influenced by [ Seitaro Shinagawa's codes](https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py). However, due to heavy indexing in partial convolution, it becomes the bottleneck. For example, I use depth-wise separable convolutions instead of standard convolutions, but I find it consumes a lot more memory and runs 2x slower. The culprit is in ```torch.where``:
+
+```
+update_holes = output_mask > 0
+mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
+output_pre = (output - output_bias) / mask_sum + output_bias
+output = torch.where(update_holes, output_pre, torch.zeros_like(output))
+```
+(I am interested in finding a more efficient way to implement partial convolution.)
+
+I also find something very interesting during training. In the early stages, the model can generate or find some parts of a image to fill in holes. For example, images below have holes replacing text inside polygons. In the left and the middle image, the model find some parts of the image to fill the holes; in the right image, the model generates a manga-like framework inside the hole. 
+
+![img](ReadME_imgs/partial_cov/standard_01.JPG)
+![img](ReadME_imgs/partial_cov/standard_03.JPG)
+![img](ReadME_imgs/partial_cov/standard_02.JPG)
+
+As a comparison, I also train a model with [depth-wise separable partial convolutions ](https://github.com/yu45020/Text_Segmentation_Image_Inpainting/blob/4904cf0c9a59743bce595482ab8c2905faea683a/models/image_inpainting.py#L9) but fail to find similar results.
+Instead, that model will generate some blurring patches on the hole like this one:
+
+![img](ReadME_imgs/partial_cov/depthwise.JPG) 
+
+##### Notes on gated convolution:
+I implement the gated convolution from Yu, etc's paper [Free-Form Image Inpainting with Gated Convolution](https://arxiv.org/abs/1806.03589). The main idea is to update the mask by a sigmoid rather than harding setting it to 1 or 0. I am not able to train the model with GAN in short time since I am renting GPUs. But if I replace the loss function with the one from the partial convolution, the model converges. 
+
+However, I am concerned with the model performance. Gated convolution has a lot more parameters from the convolutions on masks. The partial convolution has no learnable parameters  on masks. I am wondering the model is easier over-fitting the training data. 
+
+In addition, I am not able to comprehend the implantation. According the author's [comment](https://github.com/JiahuiYu/generative_inpainting/issues/62#issuecomment-398552261), the gated convolution looks like this: 
+
+```
+x1 = self.conv1(x)
+x2 = self.conv2(x)
+x = sigmoid(x2) * activation(x1)
+
+# or more GPU efficient way:
+x = self.conv(x)
+x1, x2 = split(x, 2) # split along channels 
+x = sigmoid(x2) * activation(x1)
+``` 
+
+The mask and input image are [concatenated and sent into the model](https://github.com/JiahuiYu/generative_inpainting/blob/06cd62cfca8c10c349b451fa33d9cbb786bfaa20/inpaint_model.py#L42). One problem is that if a mask has one channel and a image has three, then as convolutions go deeper, the mask has far less weigh than the image. Splitting a feature map equally may give incorrect weights. On the other hand, even if the mask has same channel as the input image, standard convolutions will connect both of them during training. Information will travel through all channels, so splitting feature maps by half may break the information flow. Using depth-wise separable convolution may solve this issue, but the problem remains: why half of them are from mask. 
+
+I am searching an alternative based on this one. The main idea comes from LSTM's attention mechanism. I use separated convolutions on input image and binary mask. The binary mask has 1 for valid pixel and 0 for hole. By reversing the label, its convolution outputs have 0 on all valid pixels while some weights on holes positions. Applying tanh and multiply to the input feature map will look like attention on images' holes. It is similar to partial convolution which gives more weights on holes. But I have not find an efficient way to update the mask. Comments and suggestions are welcome.     
 
 
 
@@ -103,6 +146,12 @@ With cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 | Gamma  0, Background:1, words:5     | 0.2437 | 
 
 * Weight decay should be smaller than 1e-3. 1e-4 is better than 1e-5 when use cyclical learning rate and SGD (with nesterov). 
+
+
+
+ ##### July 24th 
+Training the partial convolution. 
+
 
 ### Difference on Up-sampling 
 * bilinear up-sample

@@ -124,15 +124,16 @@ class ImageInpaintingData(Dataset):
         mask = self.get_mask(raw_img, clean_img)
         mask_t = to_tensor(mask)
         mask_t = (mask_t > brightness_difference).float()
-        # slow. push them on GPU
-        # mask_t = torch.max(mask_t, dim=0, keepdim=True)
-        # mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
-        #
-        # binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
-        # binary_mask = binary_mask.expand(3, -1, -1)
+
+        mask_t = torch.max(mask_t, dim=0, keepdim=True)
+        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
+
+        # corrupt the clean images rather than using the raw ones 
+        binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
+        binary_mask = binary_mask.expand(3, -1, -1)
         clean_img = self.transformer(clean_img)
-        # corrupted_img = clean_img * binary_mask
-        return clean_img, mask_t, clean_img
+        corrupted_img = clean_img * binary_mask
+        return corrupted_img, binary_mask, clean_img
 
     @staticmethod
     def get_mask(raw_pil, clean_pil):
@@ -311,19 +312,3 @@ class RandomMask:
             draw.ellipse(np.concatenate([cords, cords + ex]).tolist(), fill=255)
         return pil_img
 
-# import random
-# from random import randint
-# import numpy as np
-# from PIL import Image
-# from torchvision.transforms import RandomCrop
-#
-# img = Image.open("images/236.png_out.jpg")
-# crop = RandomCrop(256)
-# img_c = crop(img)
-# mask = RandomMask(256, offset=10)
-# img_c = mask.draw(img_c)
-# img_c.show()
-#
-# draw = ImageDraw.Draw(img_c)
-# draw.polygon([(100, 100), (130, 200)], fill=255)
-# img_c.show()
