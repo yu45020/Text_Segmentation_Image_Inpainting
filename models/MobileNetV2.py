@@ -103,23 +103,6 @@ class MobileNetV2(BaseModule):
 
         return new_v
 
-    #    for partial conv ---- will not use
-    # def load_state_dict(self, state_dict, strict=True):
-    #     own_state = self.state_dict()
-    #     if self.add_partial:  # remove all mask conv
-    #         own_name = list(filter(lambda x: 'mask_conv' not in x, list(own_state)))[:len(own_state)]
-    #         state_dict = {k: v for k, v in zip(own_name, state_dict.values())}
-    #     for name, param in state_dict.items():
-    #         if name in own_state:
-    #             try:
-    #                 own_state[name].copy_(param.data)
-    #             except Exception as e:
-    #                 print("-----------------------------------------")
-    #                 print("Parameter {} fails to load.".format(name))
-    #                 print(e)
-    #         else:
-    #             print("Parameter {} is not in the model. ".format(name))
-
     def forward(self, x):
         return self.features(x)
 
@@ -168,23 +151,32 @@ class InvertedResidual(BaseModule):
 
 class PartialInvertedResidual(BaseModule):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 dilation=1, expansion=1, BN=True, activation=True, bias=True, *args, **kwargs):
+                 dilation=1, expansion=1, BN=True, activation=True, bias=False,
+                 use_1_conv=False, drop_first_1_conv=False, *args, **kwargs):
         super(PartialInvertedResidual, self).__init__()
-        self.res_connect = stride == 1 and in_channels == out_channels and dilation == 1
+        self.res_connect = stride == 1 and in_channels == out_channels
 
         self.conv = self.make_body(in_channels, out_channels, kernel_size, stride, padding,
-                                   dilation, expansion, BN, activation, bias)
+                                   dilation, expansion, BN, activation, bias, use_1_conv, drop_first_1_conv)
 
     @staticmethod
     def make_body(in_channels, out_channels, kernel_size, stride, padding,
-                  dilation, expansion, BN, activation, bias):
-        mid_channel = int(in_channels * expansion)
+                  dilation, expansion, BN, activation, bias,
+                  use_1_conv, drop_first_1_conv):
+        if drop_first_1_conv:
+            assert expansion == 1
+            layer = [partial_convolution_block(in_channels, in_channels, kernel_size, stride, padding, dilation,
+                                               groups=in_channels, BN=BN, activation=activation, bias=bias)]
+            mid_channel = in_channels
+        else:
+            mid_channel = int(in_channels * expansion)
+            layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1,
+                                               BN=BN, activation=activation, bias=bias, use_1_conv=use_1_conv)]
+            layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
+                                                groups=mid_channel, BN=BN, activation=activation, bias=bias)]
 
-        layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1, BN=BN, activation=activation,
-                                           bias=bias)]
-        layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
-                                            groups=mid_channel, BN=BN, activation=activation, bias=bias)]
-        layer += [partial_convolution_block(mid_channel, out_channels, 1, 1, 0, 1, BN=BN, activation=None, bias=bias)]
+        layer += [partial_convolution_block(mid_channel, out_channels, 1, 1, 0, 1,
+                                            BN=BN, activation=None, bias=bias, use_1_conv=use_1_conv)]
         return nn.Sequential(*layer)
 
     def forward(self, args):

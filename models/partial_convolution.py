@@ -42,11 +42,23 @@ class PartialConv(BaseModule):
     def forward(self, args):
         x, mask = args
         output = self.feature_conv(x * mask)
-        output_bias = self.feature_conv.bias.view(1, -1, 1, 1).expand_as(output)
+        if self.feature_conv.bias is not None:
+            output_bias = self.feature_conv.bias.view(1, -1, 1, 1).expand_as(output)
+        else:
+            output_bias = torch.zeros_like(output)
 
         with torch.no_grad():
             output_mask = self.mask_conv(mask)  # mask sums
             # ones = self.mask_conv(torch.ones_like(mask))
+
+            # used to check whether holes are in the same positions across channels
+            # if self.mask_conv.kernel_size[0] == 1:
+            #     a = output_mask[:, :1, :, :]
+            #     b = mask[:, :1, :, :]
+            #
+            #     assert torch.equal(a / torch.max(output_mask), b)
+            #     assert torch.equal(a.expand_as(output_mask), output_mask)
+            #     assert torch.equal(b.expand_as(mask), mask)
 
         update_holes = output_mask > 0
         mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
@@ -61,6 +73,31 @@ class PartialConv(BaseModule):
         # output = output_pre * new_mask
 
         return output, new_mask
+
+
+class PartialConv1x1(BaseModule):
+    """
+    Optimization for encoder :
+    if the input mask have holes in the same positions across channels,
+    then 1x1 partial convolution is equivalent to a standard 1x1 convolution because holes are not updated.
+
+    By assert checking, encoder and feature pooling are eligible,
+    but decoder needs to concatenate encoder's mask, so it fails.
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size=1, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True):
+        super(PartialConv1x1, self).__init__()
+        assert kernel_size == 1 and stride == 1 and padding == 0
+        self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+                                      padding, dilation, groups, bias)
+        nn.init.kaiming_normal_(self.feature_conv.weight)
+
+    def forward(self, args):
+        x, mask = args
+        out_x = self.feature_conv(x)
+        out_m = mask[:, :1, :, :].expand_as(out_x)
+        return out_x, out_m
 
 
 class SoftPartialConv(BaseModule):
@@ -87,9 +124,13 @@ class SoftPartialConv(BaseModule):
 
 
 def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
-                              dilation=1, groups=1, bias=True, BN=True, activation=True):
-    m = [PartialConv(in_channels, out_channels, kernel_size, stride,
-                     padding, dilation, groups, bias)]
+                              dilation=1, groups=1, bias=False, BN=True, activation=True, use_1_conv=False):
+    if use_1_conv:
+        m = [PartialConv1x1(in_channels, out_channels, kernel_size, stride,
+                            padding, dilation, groups, bias)]
+    else:
+        m = [PartialConv(in_channels, out_channels, kernel_size, stride,
+                         padding, dilation, groups, bias)]
     if BN:
         m += [PartialActivatedBN(out_channels, activation)]
     if not BN and activation:

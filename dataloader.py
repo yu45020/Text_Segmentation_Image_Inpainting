@@ -107,7 +107,6 @@ class ImageInpaintingData(Dataset):
 
     def __getitem__(self, item):
         img_file = self.images[item]
-        # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
         img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
         img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
@@ -125,14 +124,15 @@ class ImageInpaintingData(Dataset):
         mask = self.get_mask(raw_img, clean_img)
         mask_t = to_tensor(mask)
         mask_t = (mask_t > brightness_difference).float()
-        mask_t = torch.max(mask_t, dim=0, keepdim=True)
-        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
-
-        binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
-        binary_mask = binary_mask.expand(3, -1, -1)
+        # slow. push them on GPU
+        # mask_t = torch.max(mask_t, dim=0, keepdim=True)
+        # mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
+        #
+        # binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
+        # binary_mask = binary_mask.expand(3, -1, -1)
         clean_img = self.transformer(clean_img)
-        corrupted_img = clean_img * binary_mask
-        return corrupted_img, binary_mask, clean_img
+        # corrupted_img = clean_img * binary_mask
+        return clean_img, mask_t, clean_img
 
     @staticmethod
     def get_mask(raw_pil, clean_pil):
