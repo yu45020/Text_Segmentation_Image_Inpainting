@@ -64,7 +64,7 @@ mask_sum = torch.where(update_holes, output_mask, torch.ones_like(output))
 output_pre = (output - output_bias) / mask_sum + output_bias
 output = torch.where(update_holes, output_pre, torch.zeros_like(output))
 ```
-(I am interested in finding a more efficient way to implement partial convolution.)
+But if I use ``masked_fill_``, both runtime and memory usage reduce significantly. 
 
 I also find something very interesting during training. In the early stages, the model can generate or find some parts of a image to fill in holes. For example, images below have holes replacing text inside polygons. In the left and the middle image, the model find some parts of the image to fill the holes; in the right image, the model generates a manga-like framework inside the hole. 
 
