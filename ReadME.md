@@ -127,6 +127,8 @@ Training on [Danbooru2017](https://www.gwern.net/Danbooru2017#rsync) is complete
 Memory usage: 4 CPUs and 8 images.
  ![img](ReadME_imgs/memory_usage_segmentation_8imgs.JPG)
  
+ ##### July 24th 
+Training the partial convolution. 
  
 ## Notes on Hyper-parameters 
 * Cyclical learning rate is a great tool but needs to pick optimal base & max learning rate. Learning rate range can be as large as 0.1-1 with few epochs ([Exploring loss function topology with cyclical learning rates](https://arxiv.org/abs/1702.04283)).
@@ -149,8 +151,6 @@ With cyclical learning rate from 1e-4 ~ 1e-2, and 100 iterations on 200 images.
 
 
 
- ##### July 24th 
-Training the partial convolution. 
 
 
 ### Difference on Up-sampling 
