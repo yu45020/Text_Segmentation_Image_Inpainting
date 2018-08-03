@@ -52,12 +52,8 @@ Source:
 > [Summer Pockets](http://key.visualarts.gr.jp/summer/)
 
 ##
-
-Origin
-![img](ReadME_imgs/seg_demo/059.jpg)
-
 Contour around texts 
-![img](ReadME_imgs/seg_demo/059_contour.jpg)
+![img](ReadME_imgs/seg_demo/059_origin_w_contour.jpg)
 
 Generated mask
 ![img](ReadME_imgs/seg_demo/059_mask.jpg)
