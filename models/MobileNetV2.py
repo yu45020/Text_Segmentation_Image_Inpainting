@@ -152,17 +152,18 @@ class InvertedResidual(BaseModule):
 class PartialInvertedResidual(BaseModule):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
                  dilation=1, expansion=1, BN=True, activation=True, bias=False,
-                 use_1_conv=False, drop_first_1_conv=False, *args, **kwargs):
+                 use_1_conv=False, drop_first_1_conv=False, no_holes_1_conv=False, *args, **kwargs):
         super(PartialInvertedResidual, self).__init__()
         self.res_connect = stride == 1 and in_channels == out_channels
 
         self.conv = self.make_body(in_channels, out_channels, kernel_size, stride, padding,
-                                   dilation, expansion, BN, activation, bias, use_1_conv, drop_first_1_conv)
+                                   dilation, expansion, BN, activation, bias,
+                                   use_1_conv, drop_first_1_conv, no_holes_1_conv)
 
     @staticmethod
     def make_body(in_channels, out_channels, kernel_size, stride, padding,
                   dilation, expansion, BN, activation, bias,
-                  use_1_conv, drop_first_1_conv):
+                  use_1_conv, drop_first_1_conv, no_holes_1_conv):
         if drop_first_1_conv:
             assert expansion == 1
             layer = [partial_convolution_block(in_channels, in_channels, kernel_size, stride, padding, dilation,
@@ -171,12 +172,14 @@ class PartialInvertedResidual(BaseModule):
         else:
             mid_channel = int(in_channels * expansion)
             layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1,
-                                               BN=BN, activation=activation, bias=bias, use_1_conv=use_1_conv)]
+                                               BN=BN, activation=activation, bias=bias,
+                                               use_1_conv=use_1_conv, no_holes_1_conv=no_holes_1_conv)]
             layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
                                                 groups=mid_channel, BN=BN, activation=activation, bias=bias)]
 
         layer += [partial_convolution_block(mid_channel, out_channels, 1, 1, 0, 1,
-                                            BN=BN, activation=None, bias=bias, use_1_conv=use_1_conv)]
+                                            BN=BN, activation=None, bias=bias,
+                                            use_1_conv=use_1_conv, no_holes_1_conv=no_holes_1_conv)]
         return nn.Sequential(*layer)
 
     def forward(self, args):
@@ -190,7 +193,7 @@ class PartialInvertedResidual(BaseModule):
 
 
 class DilatedMobileNetV2(MobileNetV2):
-    def __init__(self, width_mult=1, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False,
+    def __init__(self, width_mult=2, activation=nn.ReLU6(), bias=False, add_sece=False, add_partial=False,
                  image_channel=3):
         super(DilatedMobileNetV2, self).__init__(width_mult=width_mult, activation=activation,
                                                  bias=bias, add_sece=add_sece, add_partial=add_partial,

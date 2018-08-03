@@ -5,14 +5,13 @@
 #           pixel shuffling may make lots of false positive
 #           bilinear up sampling might be enough
 
-
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from models.common import RFB
 from .BaseModels import BaseModule
 from .MobileNetV2 import DilatedMobileNetV2, InvertedResidual
+from .common import RFB
 
 
 class TextSegament(BaseModule):
@@ -24,14 +23,14 @@ class TextSegament(BaseModule):
         :param width_mult: width multiplier for Mobile Net V2
         """
         super(TextSegament, self).__init__()
-        self.act_fn = nn.LeakyReLU(0.3, inplace=True)  # in place batch norm only support LeakyRelu, ELU
-        self.bias = True
+        self.act_fn = nn.LeakyReLU(0.3)  # in place batch norm only support LeakyRelu, ELU
         # use the pre-train weights to initialize the model
         self.encoder = DilatedMobileNetV2(width_mult=width_mult, activation=self.act_fn,
                                           bias=False, add_sece=True, add_partial=False)
 
         # down scale 1/2 features
         self.feature_avg_pool = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+
         # self.encoder.last_channel --|
         # all feature maps with 1/8 out stride
         feature_channels = sum([i[0].out_channels for i in self.encoder.features[3:]])
@@ -40,17 +39,17 @@ class TextSegament(BaseModule):
         # concatenate 3 features of 1/2 and 1/4  == 144
         concat_c = sum([i[0].out_channels for i in self.encoder.features[:3]])
         self.feature_4x_conv = InvertedResidual(concat_c, 128, stride=1, expand_ratio=1, dilation=1,
-                                                activation=self.act_fn, bias=True, add_sece=True)
+                                                activation=self.act_fn, add_sece=True)
 
         # concatenate input features in 1/4
         self.smooth_feature_4x_conv = nn.Sequential(
             InvertedResidual(256 + 128, 128, stride=1, expand_ratio=1, dilation=2,
-                             activation=self.act_fn, bias=True, add_sece=True),
+                             activation=self.act_fn, add_sece=True),
             InvertedResidual(128, 128, stride=1, expand_ratio=1, dilation=1,
-                             activation=self.act_fn, bias=True, add_sece=True)
+                             activation=self.act_fn, add_sece=True)
         )
 
-        self.out_conv = nn.Sequential(nn.Conv2d(128, 1, kernel_size=1, padding=0, bias=self.bias),
+        self.out_conv = nn.Sequential(nn.Conv2d(128, 1, kernel_size=3, padding=1, bias=True, stride=1),
                                       nn.Upsample(scale_factor=4, mode='bilinear', align_corners=False)
                                       )
 

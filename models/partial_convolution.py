@@ -100,6 +100,38 @@ class PartialConv1x1(BaseModule):
         return out_x, out_m
 
 
+class PartialConv1x1NoHoles(PartialConv):
+    """
+    Optimization for encoder :
+    Used for the decoder part. After successive partial convolution, the decoder should have no holes in the masks.
+    The u-net structure links the encoder mask with decoder mask, so 1x1 convolution will fill all holes.
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True):
+        super(PartialConv1x1NoHoles, self).__init__(in_channels, out_channels, kernel_size, stride,
+                                                    padding, dilation, groups, bias)
+        assert self.feature_conv.groups == 1
+
+    def forward(self, args):
+        x, mask = args
+        output = self.feature_conv(x * mask)
+        if self.feature_conv.bias is not None:
+            output_bias = self.feature_conv.bias.view(1, -1, 1, 1).expand_as(output)
+        else:
+            output_bias = torch.zeros_like(output)
+
+        with torch.no_grad():
+            output_mask = self.mask_conv(mask)
+
+        mask_sum = output_mask
+
+        output = (output - output_bias) / mask_sum + output_bias
+        new_mask = torch.ones_like(output)
+
+        return output, new_mask
+
+
 class SoftPartialConv(BaseModule):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True, ):
@@ -124,10 +156,14 @@ class SoftPartialConv(BaseModule):
 
 
 def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
-                              dilation=1, groups=1, bias=False, BN=True, activation=True, use_1_conv=False):
+                              dilation=1, groups=1, bias=False, BN=True, activation=True,
+                              use_1_conv=False, no_holes_1_conv=False):
     if use_1_conv:
         m = [PartialConv1x1(in_channels, out_channels, kernel_size, stride,
                             padding, dilation, groups, bias)]
+    elif no_holes_1_conv:
+        m = [PartialConv1x1NoHoles(in_channels, out_channels, kernel_size, stride,
+                                   padding, dilation, groups, bias)]
     else:
         m = [PartialConv(in_channels, out_channels, kernel_size, stride,
                          padding, dilation, groups, bias)]

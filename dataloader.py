@@ -125,10 +125,10 @@ class ImageInpaintingData(Dataset):
         mask_t = to_tensor(mask)
         mask_t = (mask_t > brightness_difference).float()
 
-        mask_t = torch.max(mask_t, dim=0, keepdim=True)
-        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=9, stride=1, padding=4)
+        mask_t, _ = torch.max(mask_t, dim=0, keepdim=True)
+        mask_t = torch.nn.functional.max_pool2d(mask_t.unsqueeze(0), kernel_size=7, stride=1, padding=3)
+        mask_t = mask_t.squeeze(0)
 
-        # corrupt the clean images rather than using the raw ones 
         binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
         binary_mask = binary_mask.expand(3, -1, -1)
         clean_img = self.transformer(clean_img)
@@ -236,48 +236,45 @@ class DanbooruDataset(Dataset):
 
 class EvaluateSet(Dataset):
     def __init__(self, mean, std, img_folder=None, resize=512):
-        self.eval_imgs = [glob.glob(img_folder + "**/*.{}".format(i), recursive=True) for i in ['jpg', 'jpeg', 'png']]
+        self.eval_imgs = [glob.glob(img_folder + "/*.{}".format(i), recursive=True) for i in ['jpg', 'jpeg', 'png']]
         self.eval_imgs = list(chain.from_iterable(self.eval_imgs))
         assert resize % 8 == 0
         self.resize = resize
         self.transformer = Compose([ToTensor(),
-                                    transforms.Lambda(lambda x: x.unsqueeze(0))
+                                    Normalize(mean=mean, std=std),
                                     ])
-        self.normalizer = Compose([transforms.Lambda(lambda x: x.squeeze(0)),
-                                   Normalize(mean=mean,
-                                             std=std),
-                                   transforms.Lambda(lambda x: x.unsqueeze(0))
-                                   ])
+
         print("Find {} test images. ".format(len(self.eval_imgs)))
 
     def __len__(self):
         return len(self.eval_imgs)
 
     def __getitem__(self, item):
-        img = Image.open(self.eval_imgs[item]).convert("RGB")
-        return self.resize_pad_tensor(img), self.eval_imgs[item]
+        img_file = self.eval_imgs[item]
+        img = Image.open(img_file).convert("RGB")
+        return self.resize_pad_tensor(img), img_file
 
     def resize_pad_tensor(self, pil_img):
-        origin = self.transformer(pil_img)
+        origin = to_tensor(pil_img).unsqueeze(0)
         fix_len = self.resize
-        long = min(pil_img.size)
+        long = max(pil_img.size)
         ratio = fix_len / long
         new_size = tuple(map(lambda x: int(x * ratio) // 8 * 8, pil_img.size))
         img = pil_img.resize(new_size, Image.BICUBIC)
         # img = pil_img
-        img = self.transformer(img)
+        img = self.transformer(img).unsqueeze(0)
 
         _, _, h, w = img.size()
-        if w > fix_len:
+        if fix_len > w:
 
-            boarder_pad = (0, w - fix_len, 0, 0)
+            boarder_pad = (0, fix_len - w, 0, 0)
         else:
 
-            boarder_pad = (0, 0, 0, h - fix_len)
+            boarder_pad = (0, 0, 0, fix_len - h)
 
         img = pad(img, boarder_pad, value=0)
         mask_resizer = self.resize_mask(boarder_pad, pil_img.size)
-        return self.normalizer(img), origin, mask_resizer
+        return img, origin, mask_resizer
 
     @staticmethod
     def resize_mask(padded_values, origin_size):
@@ -311,4 +308,3 @@ class RandomMask:
             ex = np.random.randint(10, 50, 2)
             draw.ellipse(np.concatenate([cords, cords + ex]).tolist(), fill=255)
         return pil_img
-

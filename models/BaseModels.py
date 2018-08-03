@@ -3,12 +3,6 @@ from contextlib import contextmanager
 
 from torch import nn
 
-try:
-    from .inplace_abn import InPlaceABN
-
-    inplace_batch_norm = True
-except ImportError:
-    inplace_batch_norm = False
 
 # +++++++++++++++++++++++++++++++++++++
 #           Add more functions to PyTorch's base model
@@ -44,8 +38,8 @@ class BaseModule(nn.Module):
                 m.weight.data.fill_(1)
                 m.bias.data.zero_()
 
-    def load_state_dict(self, state_dict, strict=True):
-        own_state = self.state_dict()
+    def load_state_dict(self, state_dict, strict=True, self_state=False):
+        own_state = self_state if self_state else self.state_dict()
         for name, param in state_dict.items():
             if name in own_state:
                 try:
@@ -87,21 +81,10 @@ def Conv_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
     m = [nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                    padding, dilation, groups, bias)]
     if BN:
-        m += activated_batch_norm(out_channels, activation, inplace_abn=inplace_batch_norm)
+        if activation:
+            m += [nn.Sequential(nn.BatchNorm2d(out_channels), activation)]
+        else:
+            m += [nn.Sequential(nn.BatchNorm2d(out_channels))]
     if BN is False and activation is not None:
         m += [activation]
-    return m
-
-
-def activated_batch_norm(in_channels, activation, inplace_abn=inplace_batch_norm):
-    m = []
-    if inplace_abn:
-        if activation:
-            m.append(InPlaceABN(in_channels, activation="leaky_relu", slope=0.3))
-        else:
-            m.append(InPlaceABN(in_channels, activation='none'))
-    else:
-        m.append(nn.BatchNorm2d(in_channels))
-        if activation:
-            m.append(activation)
     return m

@@ -116,19 +116,19 @@ class RFB(BaseModule):
         if half_conv:
             m = nn.Sequential(
                 *Conv_block(in_channel, mid_channel, kernel_size=1, padding=0,
-                            bias=True, BN=True, activation=activation),
+                            bias=False, BN=True, activation=activation),
                 *Conv_block(mid_channel, 3 * mid_channel // 2, kernel_size=(1, conv_kernel),
                             padding=(0, (conv_kernel - 1) // 2), bias=False, BN=True, activation=None),
                 *Conv_block(3 * mid_channel // 2, out_channel, kernel_size=(conv_kernel, 1),
                             padding=((conv_kernel - 1) // 2, 0), bias=False, BN=True, activation=None),
                 *Conv_block(out_channel, out_channel, kernel_size=3, dilation=astro_rate, padding=astro_rate,
-                            bias=True, BN=True, activation=activation, groups=out_channel))
+                            bias=False, BN=True, activation=activation, groups=out_channel))
         else:
             m = nn.Sequential(
                 *Conv_block(in_channel, out_channel, kernel_size=conv_kernel, padding=(conv_kernel - 1) // 2,
-                            bias=True, BN=True, activation=activation),
+                            bias=False, BN=True, activation=activation),
                 *Conv_block(out_channel, out_channel, kernel_size=3, dilation=astro_rate, padding=astro_rate,
-                            bias=True, BN=True, activation=activation, groups=out_channel)
+                            bias=False, BN=True, activation=activation, groups=out_channel)
             )
 
         return m

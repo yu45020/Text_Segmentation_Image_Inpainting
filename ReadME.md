@@ -33,22 +33,45 @@ The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It
 ### Decoder
 Deocder follows Deeplab V3+: features are up scaled x2 and concatenated with 1/4 encoder features, and then they are up-scaled back to the same size of input image. 
 
-##
+#### Notes on Segmentation 
+Standard Mobile Net V2 with width multiplier 1 (1.8M parameters) seems too week for this project. Setting it to 1.4 (3.5M parameters) doesn't improve the result significantly, though I have not train  it long enough. I then set the width to 2 (7.0M parameters) and add spatial & channel extra squeeze and excitation (0.17M parameters) after all inverse residual block. It has satisfying result on multi-label classification during pre-training. It also show significant improvement on segmentation.  
+
 I don't use a text-detection model such as Textbox Plus Plus, Single Shot MultiBox Detector, or Faster R-CNN because I don't have images that have bounding boxes on text regions. Real world image databases don't fit this project's goal.
 
-To generate training data, I use two copies of images: one is the origin image, and the other one is text clean. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows the text region. Applying a max pooling on the mask is better because regions around texts will also be erased out. By experiment, on a 512x512 image, max pool with kernel size 7, stride 1, and padding 3 is the best. 
+To generate training data, I use two copies of images: one is the origin image, and the other one is text clean. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows text only.  Training masks general have noise where words are not sharp enough. By experiment, on a 512x512 image, max pool with kernel size 3-7 are good enough. 
 
 The idea is inspired by He, etc's  [Single Shot Text Detector with Regional Attention](https://arxiv.org/abs/1709.00138) and He,etc's [Mask-R-CNN](https://arxiv.org/abs/1703.06870). Both papers show a pixel level object detection. 
 
+
+## Examples
+
+The model is trained on black/white images, but it also works for color images.
+ 
+![img](ReadME_imgs/seg_demo/examle.jpg)
+Source: 
+> [Summer Pockets](http://key.visualarts.gr.jp/summer/)
+
 ##
 
-The model is trained on black/white images, but it also works for color images. 
+Origin
+![img](ReadME_imgs/seg_demo/059.jpg)
 
-Example:
-![img](ReadME_imgs/examle.jpg)
-* The model has not converged yet after 10 hours of training. 
+Contour around texts 
+![img](ReadME_imgs/seg_demo/059_contour.jpg)
 
-Source: [Summer Pockets](http://key.visualarts.gr.jp/summer/)
+Generated mask
+![img](ReadME_imgs/seg_demo/059_mask.jpg)
+
+
+Source: 
+> 河方 かおる, "[GOOD_KISS_Ver2](https://www.mangaz.com/book/detail/43771)", page 59, "Manga 109", Japanese Manga Dataset
+
+>Y.Matsui, K.Ito, Y.Aramaki, A.Fujimoto, T.Ogawa, T.Yamasaki, K.Aizawa, Sketch-based Manga Retrieval using Manga109 Dataset, Multimedia Tools and Applications, Springer, 2017
+
+>T.Ogawa, A.Otsubo, R.Narita, Y.Matsui, T.Yamasaki, K.Aizawa、Object Detection for Comics using Manga109 Annotations, arXiv:1803.08670
+
+
+
 
 More examples will be added after I obtain authors' consent. 
 
@@ -66,7 +89,7 @@ output = torch.where(update_holes, output_pre, torch.zeros_like(output))
 ```
 But if I use ``masked_fill_``, both runtime and memory usage reduce significantly. 
 
-I also find something very interesting during training. In the early stages, the model can generate or find some parts of a image to fill in holes. For example, images below have holes replacing text inside polygons. In the left and the middle image, the model find some parts of the image to fill the holes; in the right image, the model generates a manga-like framework inside the hole. 
+I also find something very interesting during training. In the early stages, the model can generate or find some parts of a image to fill in holes. For example, images below have holes replacing text inside polygons. In the left and the middle image, the model find some parts of the image to fill the holes; in the right image, the model generates a manga-like frame inside the hole. 
 
 ![img](ReadME_imgs/partial_cov/standard_01.JPG)
 ![img](ReadME_imgs/partial_cov/standard_03.JPG)
