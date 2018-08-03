@@ -45,7 +45,7 @@ The idea is inspired by He, etc's  [Single Shot Text Detector with Regional Atte
 
 ## Examples
 
-The model is trained on black/white images, but it also works for color images.
+The model is trained on black/white images, but it also works for color images.　The following images have not been trained. 
  
 ![img](ReadME_imgs/seg_demo/examle.jpg)
 Source: 
