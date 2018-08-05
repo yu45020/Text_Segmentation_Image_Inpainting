@@ -179,15 +179,6 @@ class RandomMask:
         return pil_img
 
 
-maker = RandomMask(512)
-x = np.ones((512, 512), dtype='uint8') * 0
-x = Image.fromarray(x)
-y = maker.draw(x)
-y = cv2.dilate(np.array(y), np.ones((4, 4), np.uint8), iterations=1)
-y = Image.fromarray(y)
-y.show()
-
-
 class TestDataset(TextSegmentationData):
     def __init__(self, image_folder, max_images=False, image_size=(512, 512), random_crop=True):
         super(TestDataset, self).__init__(image_folder, False, False,
