@@ -4,6 +4,7 @@ import random
 import re
 from itertools import chain
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image, ImageChops
@@ -52,30 +53,33 @@ class TextSegmentationData(Dataset):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
-        img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
-        img_raw, img_mask = self.process_images(img_raw, img_clean)
-        # recommend to use nn.MaxPool2d(kernel_size=7, stride=1, padding=3) on the mask
-        # so regions around the words can also be whited ou
+        img_mask = Image.open(re.sub("raw", 'mask', img_file)).convert("L")
+        img_raw, img_mask = self.process_images(img_raw, img_mask)
         return img_raw, img_mask
 
     def process_images(self, raw, clean):
-        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
-        clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
+        mask_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
-        mask_tensor = self.get_mask(raw_img, clean_img)
-
+        mask_tensor = self.get_mask(raw_img, mask_img)
         raw_img = self.transformer(raw_img)
         return raw_img, mask_tensor
 
     def get_mask(self, raw_pil, clean_pil):
         # use PIL ! It will take care the difference in brightness/contract
-        mask = ImageChops.difference(raw_pil, clean_pil)
-        mask = self.grayscale(mask)  # single channel
+        raw = raw_pil.convert("L")
+        clean = clean_pil.convert("L")
+        mask = ImageChops.difference(raw, clean)
+        mask = np.array(mask)
+        mask = np.where(mask > brightness_difference * 255, np.uint8(255), np.uint8(0))
+        # kernel size should not be too large
+        mask = cv2.dilate(mask, np.ones((4, 4), np.uint8), iterations=1)
+        mask = np.expand_dims(mask, -1)
         mask = to_tensor(mask)
-        mask = mask > brightness_difference
-        return mask.float()  # .long()
+        # mask = mask > brightness_difference
+        return mask  # .float()  # .long()
 
 
 class ImageInpaintingData(Dataset):
@@ -115,20 +119,20 @@ class ImageInpaintingData(Dataset):
     def process_images(self, raw, clean):
         i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
-        if self.add_random_masks:
-            raw_img = self.random_mask.draw(raw_img)
-
         clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
         mask = self.get_mask(raw_img, clean_img)
+        if self.add_random_masks:
+            mask = self.random_mask.draw(mask)
+        mask = np.where(np.array(mask) > brightness_difference * 255, np.uint8(255), np.uint8(0))
+        mask = cv2.dilate(mask, np.ones((4, 4), np.uint8), iterations=1)
+
+        mask = np.expand_dims(mask, -1)
         mask_t = to_tensor(mask)
-        mask_t = (mask_t > brightness_difference).float()
+        # mask_t = (mask_t > brightness_difference).float()
 
-        mask_t, _ = torch.max(mask_t, dim=0, keepdim=True)
-        mask_t = torch.nn.functional.max_pool2d(mask_t.unsqueeze(0), kernel_size=7, stride=1, padding=3)
-        mask_t = mask_t.squeeze(0)
-
+        # mask_t, _ = torch.max(mask_t, dim=0, keepdim=True)
         binary_mask = (1 - mask_t)  # valid positions are 1; holes are 0
         binary_mask = binary_mask.expand(3, -1, -1)
         clean_img = self.transformer(clean_img)
@@ -137,11 +141,51 @@ class ImageInpaintingData(Dataset):
 
     @staticmethod
     def get_mask(raw_pil, clean_pil):
-        mask = ImageChops.difference(raw_pil, clean_pil)
-        # mask_array = np.array(mask)
-        # mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
-        # mask = Image.fromarray(mask_array)
+        raw = raw_pil.convert("L")
+        clean = clean_pil.convert("L")
+        mask = ImageChops.difference(raw, clean)
         return mask
+
+
+class RandomMask:
+    def __init__(self, size, offset=10):
+        self.size = size - offset
+        self.offset = offset
+
+    def draw(self, pil_img):
+        draw = ImageDraw.Draw(pil_img)
+        # draw liens
+        reps = np.random.randint(1, 5)
+        for i in range(reps):
+            cords = np.random.randint(self.offset, self.size, (2, 2))
+            cords[1] = np.clip(cords[1], a_min=cords[0] - 75, a_max=cords[0] + 75)
+
+            width = np.random.randint(15, 20)
+            draw.line(cords.reshape(-1).tolist(), width=width, fill=255)
+        # # draw circles
+        reps = np.random.randint(1, 5)
+        for i in range(reps):
+            cords = np.random.randint(self.offset, self.size - self.offset, 2)
+            cords.sort()
+            ex = np.random.randint(20, 70, 2) + cords
+            ex = np.clip(ex, a_min=self.offset, a_max=self.size - self.offset)
+            draw.ellipse(np.concatenate([cords, ex]).tolist(), fill=255)
+
+        # polygon
+        # reps = np.random.randint(1, 2)
+        # for i in range(reps):
+        #     cords = np.random.randint(self.offset, self.size - self.offset, 4)
+        #     draw.polygon(cords.tolist(), fill=(255, 255, 255))
+        return pil_img
+
+
+maker = RandomMask(512)
+x = np.ones((512, 512), dtype='uint8') * 0
+x = Image.fromarray(x)
+y = maker.draw(x)
+y = cv2.dilate(np.array(y), np.ones((4, 4), np.uint8), iterations=1)
+y = Image.fromarray(y)
+y.show()
 
 
 class TestDataset(TextSegmentationData):
@@ -287,24 +331,3 @@ class EvaluateSet(Dataset):
             transforms.Lambda(lambda x: x.expand(-1, 3, -1, -1) > 0)
         ])
         return m
-
-
-class RandomMask:
-    def __init__(self, size, offset=10):
-        self.size = size - offset
-        self.offset = offset
-
-    def draw(self, pil_img):
-        draw = ImageDraw.Draw(pil_img)
-        # draw liens
-        for i in range(np.random.randint(1, 4)):
-            cords = np.random.randint(self.offset, self.size, 4)
-            width = np.random.randint(5, 15)
-            draw.line(cords.tolist(), width=width, fill=255)
-        # draw circles
-        for i in range(np.random.randint(1, 4)):
-            cords = np.random.randint(self.offset, self.size, 2)
-            cords.sort()
-            ex = np.random.randint(10, 50, 2)
-            draw.ellipse(np.concatenate([cords, cords + ex]).tolist(), fill=255)
-        return pil_img
