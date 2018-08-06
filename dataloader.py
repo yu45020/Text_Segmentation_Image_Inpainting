@@ -30,6 +30,14 @@ VERY IMPORTANT: Generate masks before dumping data into the model. Noisy data or
 brightness_difference = 0.4  # in [0,1]
 
 
+def draw_contour(img, mask):
+    a, b, c = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
+    for cnt in b:
+        approx = cv2.approxPolyDP(cnt, 0, True)
+        cv2.drawContours(img, [approx], 0, (255, 255, 255), -1)
+    return img
+
+
 class TextSegmentationData(Dataset):
     def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
         # get raw images
@@ -53,6 +61,7 @@ class TextSegmentationData(Dataset):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
+        # masks are  pre-generated with cv2.dilate of 5 on images
         img_mask = Image.open(re.sub("raw", 'mask', img_file)).convert("L")
         img_raw, img_mask = self.process_images(img_raw, img_mask)
         return img_raw, img_mask
@@ -67,15 +76,17 @@ class TextSegmentationData(Dataset):
         raw_img = self.transformer(raw_img)
         return raw_img, mask_tensor
 
-    def get_mask(self, raw_pil, clean_pil):
+    def get_mask(self, raw_pil, mask_pil):
         # use PIL ! It will take care the difference in brightness/contract
-        raw = raw_pil.convert("L")
-        clean = clean_pil.convert("L")
-        mask = ImageChops.difference(raw, clean)
-        mask = np.array(mask)
+        # raw = raw_pil.convert("L")
+        # clean = clean_pil.convert("L")
+        # mask = ImageChops.difference(raw, clean)
+        mask = np.array(mask_pil)
         mask = np.where(mask > brightness_difference * 255, np.uint8(255), np.uint8(0))
         # kernel size should not be too large
+        # find tune it s.t. all words are just blurred
         mask = cv2.dilate(mask, np.ones((4, 4), np.uint8), iterations=1)
+        # mask = draw_contour(mask, mask)
         mask = np.expand_dims(mask, -1)
         mask = to_tensor(mask)
         # mask = mask > brightness_difference
