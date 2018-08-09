@@ -220,7 +220,7 @@ class InpaintingLoss(nn.Module):
         loss_style = loss_style_1 + loss_style_2
 
         # weights are recommended in the paper P7
-        loss = 1.0 * loss_validate + 10.0 * loss_hole + \
+        loss = 1.0 * loss_validate + 6.0 * loss_hole + \
                0.1 * loss_total_var + 0.05 * loss_perceptual + 120 * loss_style
         return loss
 

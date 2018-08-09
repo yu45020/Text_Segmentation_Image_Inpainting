@@ -152,30 +152,28 @@ class InvertedResidual(BaseModule):
 class PartialInvertedResidual(BaseModule):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
                  dilation=1, expansion=1, BN=True, activation=True, bias=False,
-                 use_1_conv=False, drop_first_1_conv=False, no_holes_1_conv=False, *args, **kwargs):
+                 use_1_conv=False, no_holes_1_conv=False, same_holes=False,
+                 *args, **kwargs):
         super(PartialInvertedResidual, self).__init__()
         self.res_connect = stride == 1 and in_channels == out_channels
 
         self.conv = self.make_body(in_channels, out_channels, kernel_size, stride, padding,
                                    dilation, expansion, BN, activation, bias,
-                                   use_1_conv, drop_first_1_conv, no_holes_1_conv)
+                                   use_1_conv, no_holes_1_conv, same_holes)
 
     @staticmethod
     def make_body(in_channels, out_channels, kernel_size, stride, padding,
                   dilation, expansion, BN, activation, bias,
-                  use_1_conv, drop_first_1_conv, no_holes_1_conv):
-        if drop_first_1_conv:
-            assert expansion == 1
-            layer = [partial_convolution_block(in_channels, in_channels, kernel_size, stride, padding, dilation,
-                                               groups=in_channels, BN=BN, activation=activation, bias=bias)]
-            mid_channel = in_channels
-        else:
-            mid_channel = int(in_channels * expansion)
-            layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1,
-                                               BN=BN, activation=activation, bias=bias,
-                                               use_1_conv=use_1_conv, no_holes_1_conv=no_holes_1_conv)]
-            layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
-                                                groups=mid_channel, BN=BN, activation=activation, bias=bias)]
+                  use_1_conv, no_holes_1_conv, same_holes):
+        mid_channel = int(in_channels * expansion)
+
+        layer = [partial_convolution_block(in_channels, mid_channel, 1, 1, 0, 1,
+                                           BN=BN, activation=activation, bias=bias,
+                                           use_1_conv=use_1_conv, no_holes_1_conv=no_holes_1_conv)]
+
+        layer += [partial_convolution_block(mid_channel, mid_channel, kernel_size, stride, padding, dilation,
+                                            groups=mid_channel, BN=BN, activation=activation, bias=bias,
+                                            same_holes=same_holes)]
 
         layer += [partial_convolution_block(mid_channel, out_channels, 1, 1, 0, 1,
                                             BN=BN, activation=None, bias=bias,
@@ -187,8 +185,8 @@ class PartialInvertedResidual(BaseModule):
         out_x, out_mask = self.conv((x, mask))
         if self.res_connect:
             out_x = x + out_x
-            out_mask = mask + out_mask
-            out_mask = torch.clamp(out_mask, min=0, max=1)
+            out_mask = out_mask
+            # out_mask = torch.clamp(out_mask, min=0, max=1)
         return out_x, out_mask
 
 

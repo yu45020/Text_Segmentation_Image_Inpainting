@@ -25,15 +25,22 @@ class PartialConv(BaseModule):
     # https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py
     # mask is binary, 0 is holes; 1 is not
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
-                 padding=0, dilation=1, groups=1, bias=True):
+                 padding=0, dilation=1, groups=1, bias=True,
+                 same_holes=False):
+        # same holes: holes are in the same position in all layers. used in the encoder part
+
         super(PartialConv, self).__init__()
         self.feature_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
                                       padding, dilation, groups, bias)
         nn.init.kaiming_normal_(self.feature_conv.weight)
-        # self.mask_conv = partial(F.conv2d, weight=torch.ones_like(self.feature_conv.weight),
-        #                          bias=None, stride=stride, padding=padding, dilation=dilation, groups=groups)
-        self.mask_conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride,
-                                   padding, dilation, groups, bias=False)
+
+        self.same_holes = same_holes
+        mask_in_channel = 1 if same_holes else in_channels
+        mask_out_channel = 1 if same_holes else out_channels
+        mask_groups = 1 if same_holes else groups
+        self.mask_conv = nn.Conv2d(mask_in_channel, mask_out_channel, kernel_size, stride,
+                                   padding, dilation, mask_groups, bias=False)
+
         torch.nn.init.constant_(self.mask_conv.weight, 1.0)
         # torch.nn.init.constant_(self.mask_conv.bias, 0.0)
         for param in self.mask_conv.parameters():
@@ -48,18 +55,14 @@ class PartialConv(BaseModule):
             output_bias = torch.zeros_like(output)
 
         with torch.no_grad():
-            output_mask = self.mask_conv(mask)  # mask sums
-            # ones = self.mask_conv(torch.ones_like(mask))
+            if self.same_holes:
+                output_mask = self.mask_conv(mask[:, :1])  # mask sums
+                no_update_holes = output_mask == 0
+                output_mask *= self.feature_conv.in_channels
+            else:
+                output_mask = self.mask_conv(mask)  # mask sums
+                no_update_holes = output_mask == 0
 
-            # used to check whether holes are in the same positions across channels
-            # if self.mask_conv.kernel_size[0] == 1:
-            #     a = output_mask[:, :1, :, :]
-            #     b = mask[:, :1, :, :]
-            #
-            #     assert torch.equal(a / torch.max(output_mask), b)
-            #     assert torch.equal(a.expand_as(output_mask), output_mask)
-            #     assert torch.equal(b.expand_as(mask), mask)
-        no_update_holes = output_mask == 0
         mask_sum = output_mask.masked_fill_(no_update_holes, 1.0)
 
         # See 2nd reference, but takes more time to run
@@ -68,8 +71,10 @@ class PartialConv(BaseModule):
         output_pre = (output - output_bias) / mask_sum + output_bias
         output = output_pre.masked_fill_(no_update_holes, 0.0)
 
-        new_mask = torch.ones_like(output)
+        new_mask = torch.ones_like(output_mask)
         new_mask = new_mask.masked_fill_(no_update_holes, 0.0)
+        if self.same_holes:
+            new_mask = new_mask.expand_as(output)
         # output = output_pre * new_mask
 
         return output, new_mask
@@ -100,7 +105,7 @@ class PartialConv1x1(BaseModule):
         return out_x, out_m
 
 
-class PartialConv1x1NoHoles(PartialConv):
+class PartialConvNoHoles(PartialConv):
     """
     Optimization for encoder :
     Used for the decoder part. After successive partial convolution, the decoder should have no holes in the masks.
@@ -109,8 +114,8 @@ class PartialConv1x1NoHoles(PartialConv):
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True):
-        super(PartialConv1x1NoHoles, self).__init__(in_channels, out_channels, kernel_size, stride,
-                                                    padding, dilation, groups, bias)
+        super(PartialConvNoHoles, self).__init__(in_channels, out_channels, kernel_size, stride,
+                                                 padding, dilation, groups, bias)
         assert self.feature_conv.groups == 1
 
     def forward(self, args):
@@ -157,16 +162,16 @@ class SoftPartialConv(BaseModule):
 
 def partial_convolution_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
                               dilation=1, groups=1, bias=False, BN=True, activation=True,
-                              use_1_conv=False, no_holes_1_conv=False):
+                              use_1_conv=False, no_holes_1_conv=False, same_holes=False):
     if use_1_conv:
         m = [PartialConv1x1(in_channels, out_channels, kernel_size, stride,
                             padding, dilation, groups, bias)]
     elif no_holes_1_conv:
-        m = [PartialConv1x1NoHoles(in_channels, out_channels, kernel_size, stride,
-                                   padding, dilation, groups, bias)]
+        m = [PartialConvNoHoles(in_channels, out_channels, kernel_size, stride,
+                                padding, dilation, groups, bias)]
     else:
         m = [PartialConv(in_channels, out_channels, kernel_size, stride,
-                         padding, dilation, groups, bias)]
+                         padding, dilation, groups, bias, same_holes)]
     if BN:
         m += [PartialActivatedBN(out_channels, activation)]
     if not BN and activation:

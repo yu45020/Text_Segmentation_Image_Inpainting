@@ -36,6 +36,12 @@ Deocder follows Deeplab V3+: features are up scaled x2 and concatenated with 1/4
 #### Notes on Segmentation 
 Standard Mobile Net V2 with width multiplier 1 (1.8M parameters) seems too week for this project. Setting it to 1.4 (3.5M parameters) doesn't improve the result significantly, though I have not train  it long enough. I then set the width to 2 (7.0M parameters) and add spatial & channel extra squeeze and excitation (0.17M parameters) after all inverse residual block. It has satisfying result on multi-label classification during pre-training. It also show significant improvement on segmentation.  
 
+Another point is the weights on the binary cross entropy. Giving more weights on the text labels will increase false positives. The model can identify more words, but not all words are required to erased, which is why I don't use soft bootstrap cross entropy. However, giving more weights on background, say 5:1, will diverge the model. Assigning 2:1 will give reasonable outcome, but the model miss lots of small size words. For example: In the left image,  the word "い" in the left top corner is identified as background. In the right image, the same word is also partially miss-identified. Such problem seems to disappear when I set equal weights. 
+
+ ![img](./ReadME_imgs/seg_demo/miss_small_words.JPG)
+ ![img](./ReadME_imgs/seg_demo/miss_small_words2.JPG)
+
+
 I don't use a text-detection model such as Textbox Plus Plus, Single Shot MultiBox Detector, or Faster R-CNN because I don't have images that have bounding boxes on text regions. Real world image databases don't fit this project's goal.
 
 To generate training data, I use two copies of images: one is the origin image, and the other one is text clean. These images are abundant and easy to obtain from either targeted users or web-scraping.  By subtracting the two, I get a mask that shows text only.  Training masks general have noise where words are not sharp enough. By experiment, on a 512x512 image, max pool with kernel size 3-7 are good enough. 
@@ -75,7 +81,7 @@ More examples will be added after I obtain authors' consent.
 ## Image Inpainting
 The model structure is  U-Net like, but all convolutions are replaced by the partial convolution from Liu, etc's paper [Image Inpainting for Irregular Holes Using Partial Convolutions](https://arxiv.org/abs/1804.07723), which is similar to a weighted convolution with respect to image holes. 
 
-My implementation is  influenced by [ Seitaro Shinagawa's codes](https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py). However, due to heavy indexing in partial convolution, it becomes the bottleneck. For example, I use depth-wise separable convolutions instead of standard convolutions, but I find it consumes a lot more memory and runs 2x slower. The culprit is in ```torch.where``:
+My implementation is influenced by [ Seitaro Shinagawa's codes](https://github.com/SeitaroShinagawa/chainer-partial_convolution_image_inpainting/blob/master/common/net.py). However, due to heavy indexing in partial convolution, it becomes the bottleneck. For example, I use depth-wise separable convolutions instead of standard convolutions, but I find it consumes a lot more memory and runs 2x slower. The culprit is in ```torch.where``:
 
 ```
 update_holes = output_mask > 0
@@ -84,6 +90,13 @@ output_pre = (output - output_bias) / mask_sum + output_bias
 output = torch.where(update_holes, output_pre, torch.zeros_like(output))
 ```
 But if I use ``masked_fill_``, both runtime and memory usage reduce significantly. 
+
+In addition, I use double convolution with residual connect in each layer. Increasing model depth significantly improve results. I train two models on 20 images with random masks. One is the model from the paper, and it has over 32 million parameters. The other model has 2x depth, but the layers that have 512 channels are replaced by 256, resulting in over 18 millions parameters. More specifically, layers in the second model has the following structure: 
+
+```partial convolution ( stride 2) --> batch norm --> activation --> partial convolution (stride 1) --> batch norm --> activation --> residual add from previous convolution ```  
+
+Both models are trained 2000k iterations, and the deeper model give better visualization. 
+
 
 I also find something very interesting during training. In the early stages, the model can generate or find some parts of a image to fill in holes. For example, images below have holes replacing text inside polygons. In the left and the middle image, the model find some parts of the image to fill the holes; in the right image, the model generates a manga-like frame inside the hole. 
 
@@ -95,6 +108,11 @@ As a comparison, I also train a model with [depth-wise separable partial convolu
 Instead, that model will generate some blurring patches on the hole like this one:
 
 ![img](ReadME_imgs/partial_cov/depthwise.JPG) 
+
+
+## Examples
+The model has not converged yet after 10 hours of training on 3560 images with Nvidia V-100. More examples will be added. 
+![img](./ReadME_imgs/inpaint_demo/repaire.jpg)
 
 ##### Notes on gated convolution:
 I implement the gated convolution from Yu, etc's paper [Free-Form Image Inpainting with Gated Convolution](https://arxiv.org/abs/1806.03589). The main idea is to update the mask by a sigmoid rather than harding setting it to 1 or 0. I am not able to train the model with GAN in short time since I am renting GPUs. But if I replace the loss function with the one from the partial convolution, the model converges. 

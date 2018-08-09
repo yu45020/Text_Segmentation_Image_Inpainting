@@ -98,9 +98,9 @@ class ImageInpaintingData(Dataset):
         super(ImageInpaintingData, self).__init__()
 
         if isinstance(image_folder, str):
-            self.images = glob.glob(os.path.join(image_folder, "raw/*"))
+            self.images = glob.glob(os.path.join(image_folder, "clean/*"))
         else:
-            self.images = list(chain.from_iterable([glob.glob(os.path.join(i, "raw/*")) for i in image_folder]))
+            self.images = list(chain.from_iterable([glob.glob(os.path.join(i, "clean/*")) for i in image_folder]))
         assert len(self.images) > 0
 
         if max_images:
@@ -110,34 +110,34 @@ class ImageInpaintingData(Dataset):
         self.img_size = image_size
 
         self.transformer = Compose([RandomGrayscale(p=0.4),
-                                    ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+                                    # ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
                                     ToTensor(),
                                     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                     ])
         self.add_random_masks = add_random_masks
-        self.random_mask = RandomMask(image_size[0])
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, item):
         img_file = self.images[item]
-        img_raw = Image.open(img_file).convert('RGB')
-        img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
-        img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
+        img_clean = Image.open(img_file).convert('RGB')
+        img_mask = Image.open(re.sub("clean", 'mask', img_file)).convert("L")
+        img_raw, masks, img_clean = self.process_images(img_clean, img_mask)
         return img_raw, masks, img_clean
 
-    def process_images(self, raw, clean):
-        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
-        raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
-        clean_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
+    def process_images(self, clean, mask):
+        i, j, h, w = RandomResizedCrop.get_params(clean, scale=(0.5, 2.0), ratio=(3. / 4., 4. / 3.))
+        clean_img = resized_crop(clean, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
+        mask = resized_crop(mask, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
         # get mask before further image augment
-        mask = self.get_mask(raw_img, clean_img)
+        # mask = self.get_mask(raw_img, clean_img)
+
         if self.add_random_masks:
-            mask = self.random_mask.draw(mask)
+            mask = random_masks(mask.copy(), size=self.img_size[0], offset=10)
         mask = np.where(np.array(mask) > brightness_difference * 255, np.uint8(255), np.uint8(0))
-        mask = cv2.dilate(mask, np.ones((4, 4), np.uint8), iterations=1)
+        mask = cv2.dilate(mask, np.ones((10, 10), np.uint8), iterations=1)
 
         mask = np.expand_dims(mask, -1)
         mask_t = to_tensor(mask)
@@ -158,36 +158,27 @@ class ImageInpaintingData(Dataset):
         return mask
 
 
-class RandomMask:
-    def __init__(self, size, offset=10):
-        self.size = size - offset
-        self.offset = offset
+def random_masks(pil_img, size=512, offset=10):
+    draw = ImageDraw.Draw(pil_img)
+    # draw liens
+    # can't use np.random because its not forkable under PyTorch's dataloader with multiprocessing
+    reps = random.randint(1, 5)
 
-    def draw(self, pil_img):
-        draw = ImageDraw.Draw(pil_img)
-        # draw liens
-        reps = np.random.randint(1, 5)
-        for i in range(reps):
-            cords = np.random.randint(self.offset, self.size, (2, 2))
-            cords[1] = np.clip(cords[1], a_min=cords[0] - 75, a_max=cords[0] + 75)
+    for i in range(reps):
+        cords = np.array(random.choices(range(offset, size), k=4)).reshape(2, 2)
+        cords[1] = np.clip(cords[1], a_min=cords[0] - 75, a_max=cords[0] + 75)
 
-            width = np.random.randint(15, 20)
-            draw.line(cords.reshape(-1).tolist(), width=width, fill=255)
-        # # draw circles
-        reps = np.random.randint(1, 5)
-        for i in range(reps):
-            cords = np.random.randint(self.offset, self.size - self.offset, 2)
-            cords.sort()
-            ex = np.random.randint(20, 70, 2) + cords
-            ex = np.clip(ex, a_min=self.offset, a_max=self.size - self.offset)
-            draw.ellipse(np.concatenate([cords, ex]).tolist(), fill=255)
-
-        # polygon
-        # reps = np.random.randint(1, 2)
-        # for i in range(reps):
-        #     cords = np.random.randint(self.offset, self.size - self.offset, 4)
-        #     draw.polygon(cords.tolist(), fill=(255, 255, 255))
-        return pil_img
+        width = random.randint(15, 20)
+        draw.line(cords.reshape(-1).tolist(), width=width, fill=255)
+    # # draw circles
+    reps = random.randint(1, 5)
+    for i in range(reps):
+        cords = np.array(random.choices(range(offset, size - offset), k=2))
+        cords.sort()
+        ex = np.array(random.choices(range(20, 70), k=2)) + cords
+        ex = np.clip(ex, a_min=offset, a_max=size - offset)
+        draw.ellipse(np.concatenate([cords, ex]).tolist(), fill=255)
+    return pil_img
 
 
 class TestDataset(TextSegmentationData):
@@ -197,7 +188,6 @@ class TestDataset(TextSegmentationData):
         self.transformer = Compose([ToTensor(),
                                     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                     ])
-        self.random_mask = RandomMask(image_size[0])
         self.random_crop = random_crop
         self.images = self.gen_img(0)
 
@@ -211,8 +201,6 @@ class TestDataset(TextSegmentationData):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
-        img_raw = self.random_mask.draw(img_raw)
-
         img_clean = Image.open(re.sub("raw", 'clean', img_file)).convert("RGB")
         img_raw, masks, img_clean = self.process_images(img_raw, img_clean)
         return img_raw, masks, img_clean
