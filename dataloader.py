@@ -181,23 +181,32 @@ def random_masks(pil_img, size=512, offset=10):
     return pil_img
 
 
-class TestDataset(TextSegmentationData):
-    def __init__(self, image_folder, max_images=False, image_size=(512, 512), random_crop=True):
-        super(TestDataset, self).__init__(image_folder, False, False,
-                                          max_images, image_size)
-        self.transformer = Compose([ToTensor(),
+class TestDataset(Dataset):
+    def __init__(self, image_folder, max_images=False, image_size=(512, 512), add_random_masks=False):
+        super(TestDataset, self).__init__()
+        if isinstance(image_folder, str):
+            self.images = glob.glob(os.path.join(image_folder, "clean/*"))
+        else:
+            self.images = list(chain.from_iterable([glob.glob(os.path.join(i, "clean/*")) for i in image_folder]))
+        assert len(self.images) > 0
+
+        if max_images:
+            self.images = random.choices(self.images, k=max_images)
+        print(f"Find {len(self.images)} images.")
+
+        self.img_size = image_size
+
+        self.transformer = Compose([RandomGrayscale(p=0.4),
+                                    # ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+                                    ToTensor(),
                                     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
                                     ])
-        self.random_crop = random_crop
-        self.images = self.gen_img(0)
+        self.add_random_masks = add_random_masks
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, item):
-        return self.images
-
-    def gen_img(self, item):
         img_file = self.images[item]
         # avoid multiprocessing on the same image
         img_raw = Image.open(img_file).convert('RGB')
@@ -213,18 +222,22 @@ class TestDataset(TextSegmentationData):
         # get mask before further image augment
         mask = self.get_mask(raw_img, clean_img)
         mask_t = to_tensor(mask)
-        mask_t = (mask_t > 0).float()
-        mask_t = torch.nn.functional.max_pool2d(mask_t, kernel_size=5, stride=1, padding=2)
-        # mask_t = mask_t.byte()
 
-        raw_img = ImageChops.difference(mask, clean_img)
-        return self.transformer(raw_img), 1 - mask_t, self.transformer(clean_img)
+        binary_mask = (1 - mask_t)
+        binary_mask = binary_mask.expand(3, -1, -1)
+        clean_img = self.transformer(clean_img)
+        corrupted_img = clean_img * binary_mask
+        return corrupted_img, binary_mask, clean_img
 
     def get_mask(self, raw_pil, clean_pil):
-        mask = ImageChops.difference(raw_pil, clean_pil)
-        mask_array = np.array(mask)
-        mask_array = np.where(mask_array > 90, mask_array, np.zeros_like(mask_array))
-        mask = Image.fromarray(mask_array)
+        raw = raw_pil.convert("L")
+        clean = clean_pil.convert("L")
+        mask = ImageChops.difference(raw, clean)
+        if self.add_random_masks:
+            mask = random_masks(mask.copy(), size=self.img_size[0], offset=10)
+        mask = np.where(np.array(mask) > brightness_difference * 255, np.uint8(255), np.uint8(0))
+        mask = cv2.dilate(mask, np.ones((10, 10), np.uint8), iterations=1)
+        mask = np.expand_dims(mask, -1)
         return mask
 
 

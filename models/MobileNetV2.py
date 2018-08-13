@@ -228,7 +228,7 @@ class MobileNetV2Classifier(BaseModule):
         cat_feat_num = sum([i[0].out_channels for i in self.encoder.features[3:]])
         # self.conv_classifier = self.make_conv_classifier(cat_feat_num, num_class)
         self.feature_conv = InvertedResidual(cat_feat_num, num_class, stride=1, expand_ratio=1, dilation=1,
-                                             conv_block_fn=Conv_block, activation=self.act_fn, bias=False,
+                                             activation=self.act_fn, bias=False,
                                              add_sece=True)
         self.global_avg = nn.AdaptiveAvgPool2d(1)
         lstm_hidden = 256

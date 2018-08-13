@@ -1,8 +1,14 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.nn.functional import affine_grid, grid_sample
 
 from .BaseModels import BaseModule, Conv_block
+
+use_cuda = torch.cuda.is_available()
+FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
+LongTensor = torch.cuda.LongTensor if use_cuda else torch.LongTensor
+Tensor = FloatTensor
 
 
 class SpatialChannelSqueezeExcitation(BaseModule):
@@ -48,37 +54,42 @@ def add_SCSE_block(model_block, in_channel=None):
 class ASP(BaseModule):
     # Atrous Spatial Pyramid Pooling with Image Pooling
     # add Vortex pooling https://arxiv.org/pdf/1804.06242v1.pdf
-    def __init__(self, in_channel=256, out_channel=256):
+    def __init__(self, in_channel=256, out_channel=256, act_fn=None):
         super(ASP, self).__init__()
-        asp_rate = [5, 17, 29]
+        asp_rate = [3, 9, 27]
         self.asp = nn.Sequential(
-            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=1, stride=1, padding=0,
-                                      bias=False, BN=True, activation=None)),
+            nn.Sequential(*Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=1,
+                                      bias=False, BN=True, activation=act_fn)),
             nn.Sequential(nn.AvgPool2d(kernel_size=asp_rate[0], stride=1, padding=(asp_rate[0] - 1) // 2),
                           *Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=asp_rate[0],
-                                      dilation=asp_rate[0], bias=False, BN=True, activation=None)),
+                                      dilation=asp_rate[0], bias=False, BN=True, activation=act_fn)),
             nn.Sequential(nn.AvgPool2d(kernel_size=asp_rate[1], stride=1, padding=(asp_rate[1] - 1) // 2),
                           *Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=asp_rate[1],
-                                      dilation=asp_rate[1], bias=False, BN=True, activation=None)),
+                                      dilation=asp_rate[1], bias=False, BN=True, activation=act_fn)),
             nn.Sequential(nn.AvgPool2d(kernel_size=asp_rate[2], stride=1, padding=(asp_rate[2] - 1) // 2),
                           *Conv_block(in_channel, out_channel, kernel_size=3, stride=1, padding=asp_rate[2],
-                                      dilation=asp_rate[2], bias=False, BN=True, activation=None))
+                                      dilation=asp_rate[2], bias=False, BN=True, activation=act_fn))
         )
 
         """ To see why adding gobal average, please refer to 3.1 Global Context in https://www.cs.unc.edu/~wliu/papers/parsenet.pdf """
-        self.img_pooling_1 = nn.AdaptiveAvgPool2d(1)
-        self.img_pooling_2 = nn.Sequential(
-            *Conv_block(in_channel, out_channel, kernel_size=1, bias=False, BN=True, activation=None))
 
+        self.img_pooling = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            *Conv_block(in_channel, out_channel, kernel_size=1, bias=False, BN=True, activation=act_fn))
+
+        self.out_conv = nn.Sequential(*Conv_block(out_channel * 5, out_channel, kernel_size=1, bias=False,
+                                                  BN=True, activation=act_fn))
         # self.initialize_weights()
         # self.selu_init_params()
 
     def forward(self, x):
-        avg_pool = self.img_pooling_1(x)
-        avg_pool = F.upsample(avg_pool, size=x.shape[2:], mode='bilinear')
-        avg_pool = [x, self.img_pooling_2(avg_pool)]
+        avg_pool = self.img_pooling(x)
+        avg_pool = [F.interpolate(avg_pool, size=x.shape[2:], mode='bilinear', align_corners=False)]
+
         asp_pool = [layer(x) for layer in self.asp.children()]
-        return torch.cat(avg_pool + asp_pool, dim=1)
+        out_features = torch.cat(avg_pool + asp_pool, dim=1)
+        out = self.out_conv(out_features)
+        return out
 
 
 class RFB(BaseModule):
@@ -142,3 +153,63 @@ class RFB(BaseModule):
         # skip connection
         resi = self.input_down_channel(x)
         return self.act_fn(rfb_pool + resi)
+
+
+class CNNLSTMClassifier(BaseModule):
+    def __init__(self, num_class, lstm_hidden=256, batch_first=True, act_fn=nn.LeakyReLU(0.3)):
+        super(CNNLSTMClassifier, self).__init__()
+        self.global_avg = nn.AdaptiveAvgPool2d(1)
+        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=batch_first)
+        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), act_fn)
+        self.lstm_linear_score = nn.Linear(lstm_hidden, num_class)
+        self.st_theta_linear = nn.Sequential(nn.Linear(lstm_hidden // 4, 2 * 3))
+        self.anchor_box = FloatTensor([(0, 0), (0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
+                                       ])
+
+    @staticmethod
+    def spatial_transformer(input_image, theta):
+        # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
+        # https://blog.csdn.net/qq_39422642/article/details/78870629
+        grids = affine_grid(theta, input_image.size())
+
+        output_img = grid_sample(input_image, grids)
+        return output_img
+
+    def forward(self, input_img):
+        # Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
+        # LSTM input: step size is one, feature size is num_class (channels)
+
+        img = input_img
+        batch = input_img.size(0)
+
+        category_scores = []
+        transform_box = []
+        # h = c = torch.zeros(1, batch, self.lstm.hidden_size).cuda()
+        features = self.global_avg(img).view(batch, 1, -1)
+        y, (h, c) = self.lstm(features)
+        #         s = self.lstm_linear_score(y.view(batch, -1))
+        #         category_scores.append(s)
+        for i in range(4 + 1):  # 4 anchor points and repeated 4 times
+            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))  # y.view(batch, -1)
+            st_theta = self.st_theta_linear(z).view(batch, 2, 3)
+            st_theta[:, :, -1] = st_theta[:, :, -1] + self.anchor_box[i]
+
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0]
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1]
+
+            transform_box.append(st_theta)
+
+            img = self.spatial_transformer(input_img, st_theta)
+            features = self.global_avg(img).view(batch, 1, -1)
+
+            # y.size = batch, seq_len (1) , num_direc*hidden_size
+            # h, c size = num_layer*bi-direc, batch, hidden_size
+            y, (h, c) = self.lstm(features, (h, c))
+
+            s = self.lstm_linear_score(
+                y.view(batch, -1))  # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
+            category_scores.append(s)
+
+        category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category
+        transform_box = torch.stack(transform_box, dim=1)  # the first one is free. size: batch, regions, 2,3
+        return category_scores, transform_box

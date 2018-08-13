@@ -88,3 +88,28 @@ def Conv_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
     if BN is False and activation is not None:
         m += [activation]
     return m
+
+
+class DSConvBlock(BaseModule):
+    """ depth wise separable convolution
+     A Quantization-Friendly Separable Convolution for MobileNets
+    shows removing batch norm + activation after depthwise conv helps
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
+                 dilation=1, bias=True, BN=False, activation=None):
+        super(DSConvBlock, self).__init__()
+
+        self.depth_wise_conv = nn.Sequential(
+            *Conv_block(in_channels, in_channels, kernel_size, stride, padding,
+                        dilation, in_channels, bias, BN=False, activation=None)
+        )
+
+        self.point_wise_conv = nn.Sequential(
+            *Conv_block(in_channels, out_channels, kernel_size=1, stride=1, padding=0,
+                        dilation=1, bias=bias, BN=BN, activation=activation))
+
+    def forward(self, x):
+        x = self.depth_wise_conv(x)
+        x = self.point_wise_conv(x)
+        return x
