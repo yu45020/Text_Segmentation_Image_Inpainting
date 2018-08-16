@@ -1,4 +1,5 @@
 import torch
+from memory_profiler import profile
 from torch import nn
 
 from models.common import CNNLSTMClassifier
@@ -18,13 +19,14 @@ class ResidualBlock(BaseModule):
             middle_channel = out_channels
         else:
             middle_channel = in_channels
+
         self.conv = nn.Sequential(
             DSConvBlock(in_channels, middle_channel, kernel_size, 1, padding,
-                        dilation, bias, BN, activation),
+                        dilation, bias, BN, activation, activation),
             DSConvBlock(middle_channel, out_channels, kernel_size, 1, padding,
-                        dilation, bias, BN, activation),
+                        dilation, bias, BN, activation, activation),
             DSConvBlock(out_channels, out_channels, kernel_size, stride, padding,
-                        dilation, bias, BN, activation=None)
+                        dilation, bias, BN, activation, None)
         )
 
         if (stride > 1) or (in_channels != out_channels):
@@ -48,11 +50,11 @@ class Xception(BaseModule):
         super(Xception, self).__init__()
         self.act_fn = act_fn
         self.entry_flow_1 = self.make_entry_flow_1(color_channel, 128)  # 1/4
-        self.entry_flow_2 = self.make_entry_flow_2(128, 728)  # 1/16
-        self.middle_flow = self.make_middle_flow(728, 728, repeat_blocks=16)
-        self.exit_flow = self.make_exit_flow(728, 2048)
+        self.entry_flow_2 = self.make_entry_flow_2(128, 512)  # 1/16
+        self.middle_flow = self.make_middle_flow(512, 512, repeat_blocks=8, rate=2)
+        self.exit_flow = self.make_exit_flow(512, 512, rate=4)
         self.x4_feature_channels = 128
-        self.last_feature_channels = 2048
+        self.last_feature_channels = 512
 
     def make_entry_flow_1(self, in_channel, out_channel):
         m = nn.Sequential(
@@ -69,32 +71,30 @@ class Xception(BaseModule):
         m = nn.Sequential(
             ResidualBlock(in_channel, 256, 3, stride=2, padding=1,
                           dilation=1, bias=False, BN=True, activation=self.act_fn),
-            ResidualBlock(256, out_channel, 3, stride=2, padding=1,
-                          dilation=1, bias=False, BN=True, activation=self.act_fn)
+            ResidualBlock(256, out_channel, 3, stride=1, padding=2,  # need to change  if want out-stride of 8
+                          dilation=2, bias=False, BN=True, activation=self.act_fn)
         )
         return m
 
-    def make_middle_flow(self, in_channel=728, out_channel=728, repeat_blocks=16):
+    def make_middle_flow(self, in_channel=728, out_channel=728, repeat_blocks=16, rate=1):
         m = []
         for i in range(repeat_blocks):
-            m.append(ResidualBlock(in_channel, out_channel, 3, stride=1, padding=1,
-                                   dilation=1, bias=False, BN=True, activation=self.act_fn))
+            m.append(ResidualBlock(in_channel, out_channel, 3, stride=1, padding=rate,
+                                   dilation=rate, bias=False, BN=True, activation=self.act_fn))
         return nn.Sequential(*m)
 
-    def make_exit_flow(self, in_channel=728, out_channel=2048):
+    def make_exit_flow(self, in_channel=728, out_channel=2048, rate=2):
         m = nn.Sequential(
-            ResidualBlock(in_channel, 1024, 3, stride=1, padding=2, dilation=2, bias=False,
+            ResidualBlock(in_channel, 512, 3, stride=1, padding=rate, dilation=rate, bias=False,
                           BN=True, activation=self.act_fn, expand_channel_first=False),
-            DSConvBlock(1024, 1536, 3, 1, 2, dilation=2, bias=False,
-                        BN=True, activation=self.act_fn),
-            DSConvBlock(1536, 1536, 3, 1, 2, dilation=2, bias=False,
-                        BN=True, activation=self.act_fn),
-            DSConvBlock(1536, out_channel, 3, 1, 2, dilation=2, bias=False,
-                        BN=True, activation=self.act_fn),
-
+            ResidualBlock(512, out_channel, 3, stride=1, padding=rate, dilation=rate, bias=False,
+                          BN=True, activation=self.act_fn, expand_channel_first=False),
+            # DSConvBlock(512, out_channel, 3, 1, padding=rate, dilation=rate, bias=False,
+            #             BN=True, activation=self.act_fn)
         )
         return m
 
+    @profile
     def forward(self, x):
         x = self.entry_flow_1(x)
         x4_features = x
@@ -111,7 +111,7 @@ class XceptionClassifier(BaseModule):
         self.act_fn = nn.LeakyReLU(0.3)
         self.encoder = Xception(3, self.act_fn)
         self.feature_conv = nn.Sequential(
-            *Conv_block(self.encoder.last_feature_channels, num_class, 3, stride=1, padding=1, bias=False,
+            *Conv_block(self.encoder.last_feature_channels, num_class, 1, stride=1, padding=0, bias=False,
                         BN=True, activation=self.act_fn)
         )
         self.cnn_lstm_classifier = CNNLSTMClassifier(num_class=num_class, lstm_hidden=256, batch_first=True)
@@ -125,3 +125,80 @@ class XceptionClassifier(BaseModule):
     def predict(self, category_scores):
         scores, index = category_scores.max(1)
         return scores
+
+
+from torch.nn.functional import affine_grid, grid_sample
+
+
+class XceptionClassifierV2(BaseModule):
+    def __init__(self, num_class):
+        super(XceptionClassifierV2, self).__init__()
+        self.num_class = num_class
+        self.act_fn = nn.LeakyReLU(0.3, inplace=True)  # nn.SELU(inplace=True)
+        self.encoder = Xception(3, self.act_fn)
+        self.feature_conv = nn.Sequential(
+            *Conv_block(self.encoder.last_feature_channels, num_class, 1, stride=1, padding=0, bias=False,
+                        BN=True, activation=self.act_fn)
+        )
+        self.global_avg = nn.AdaptiveAvgPool2d(1)
+        lstm_hidden = 256
+        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=True)
+        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), self.act_fn)
+        self.lstm_linear_score = nn.Linear(lstm_hidden, num_class)
+        self.st_theta_linear = nn.Sequential(nn.Linear(lstm_hidden // 4, 2 * 3))
+        self.anchor_box = FloatTensor([(0, 0), (0.3, 0.3), (0.3, -0.3), (-0.3, -0.3), (-0.3, 0.3)
+                                       ])
+
+    def cnn_lstm_classifier(self, input_img):
+        # Multi-label Image Recognition by Recurrently Discovering Attentional Regions by Wang, chen,  Li, Xu, and Lin
+        # LSTM input: step size is one, feature size is num_class (channels)
+
+        img = input_img
+        batch = input_img.size(0)
+
+        category_scores = []
+        transform_box = []
+        # h = c = torch.zeros(1, batch, self.lstm.hidden_size).cuda()
+        features = self.global_avg(img).view(batch, 1, -1)
+        y, (h, c) = self.lstm(features)
+        #         s = self.lstm_linear_score(y.view(batch, -1))
+        #         category_scores.append(s)
+        for i in range(4 + 1):  # 4 anchor points and repeated 4 times
+            z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))  # y.view(batch, -1)
+            st_theta = self.st_theta_linear(z).view(batch, 2, 3)
+            st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
+
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clone()
+
+            transform_box.append(st_theta)
+
+            img = self.spatial_transformer(input_img, st_theta)
+            features = self.global_avg(img).view(batch, 1, -1)
+
+            # y.size = batch, seq_len (1) , num_direc*hidden_size
+            # h, c size = num_layer*bi-direc, batch, hidden_size
+            y, (h, c) = self.lstm(features, (h, c))
+
+            s = self.lstm_linear_score(
+                y.view(batch, -1))  # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
+            category_scores.append(s)
+
+        category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category
+        transform_box = torch.stack(transform_box, dim=1)  # the first one is free. size: batch, regions, 2,3
+        return category_scores, transform_box
+
+    @staticmethod
+    def spatial_transformer(input_image, theta):
+        # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
+        # https://blog.csdn.net/qq_39422642/article/details/78870629
+        grids = affine_grid(theta, input_image.size())
+
+        output_img = grid_sample(input_image, grids)
+        return output_img
+
+    def forward(self, x):
+        x, _ = self.encoder(x)
+        x = self.feature_conv(x)
+        category_scores, transform_box = self.cnn_lstm_classifier(x)
+        return category_scores, transform_box

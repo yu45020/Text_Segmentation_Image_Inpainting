@@ -192,10 +192,10 @@ class CNNLSTMClassifier(BaseModule):
         for i in range(4 + 1):  # 4 anchor points and repeated 4 times
             z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))  # y.view(batch, -1)
             st_theta = self.st_theta_linear(z).view(batch, 2, 3)
-            st_theta[:, :, -1] = st_theta[:, :, -1] + self.anchor_box[i]
+            st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
 
-            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0]
-            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1]
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clond()
 
             transform_box.append(st_theta)
 

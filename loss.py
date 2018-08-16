@@ -2,7 +2,6 @@ import torch
 import torchvision
 from torch import nn
 from torch.nn import functional as F
-from torch.nn.modules.loss import _assert_no_grad
 
 from models.BaseModels import BaseModule
 
@@ -103,7 +102,6 @@ class SoftBootstrapCrossEntropy(nn.BCELoss):
         self.reduce = reduce
 
     def forward(self, input, target):
-        _assert_no_grad(target)
         # if a pixel's probability > 0.5, then assume it is true since labels might be noisy
         input = self.flatten_images(input)
         target = self.flatten_images(target)

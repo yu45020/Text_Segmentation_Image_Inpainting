@@ -97,17 +97,17 @@ class DSConvBlock(BaseModule):
     """
 
     def __init__(self, in_channels, out_channels, kernel_size, stride=1, padding=0,
-                 dilation=1, bias=True, BN=False, activation=None):
+                 dilation=1, bias=True, BN=False, activation_dep=None, activation_point=None):
         super(DSConvBlock, self).__init__()
 
         self.depth_wise_conv = nn.Sequential(
             *Conv_block(in_channels, in_channels, kernel_size, stride, padding,
-                        dilation, in_channels, bias, BN=False, activation=None)
+                        dilation, in_channels, bias, BN=BN, activation=activation_dep)
         )
 
         self.point_wise_conv = nn.Sequential(
             *Conv_block(in_channels, out_channels, kernel_size=1, stride=1, padding=0,
-                        dilation=1, bias=bias, BN=BN, activation=activation))
+                        dilation=1, bias=bias, BN=BN, activation=activation_point))
 
     def forward(self, x):
         x = self.depth_wise_conv(x)

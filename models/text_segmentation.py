@@ -105,7 +105,7 @@ class XecptionTextSegment(BaseModule):
     def forward(self, x):
         x, x4_features = self.encoder(x)
         x = self.feature_pooling(x)
-        x = F.interpolate(x, scale_factor=4, mode='bilinear', align_corners=False)
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
         x4_features = self.feature_4x_conv(x4_features)
         x = torch.cat([x, x4_features], dim=1)
         x = self.out_conv(x)

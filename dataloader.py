@@ -85,7 +85,7 @@ class TextSegmentationData(Dataset):
         mask = np.where(mask > brightness_difference * 255, np.uint8(255), np.uint8(0))
         # kernel size should not be too large
         # find tune it s.t. all words are just blurred
-        mask = cv2.dilate(mask, np.ones((4, 4), np.uint8), iterations=1)
+        mask = cv2.dilate(mask, np.ones((2, 2), np.uint8), iterations=1)
         # mask = draw_contour(mask, mask)
         mask = np.expand_dims(mask, -1)
         mask = to_tensor(mask)
@@ -250,7 +250,7 @@ class DanbooruDataset(Dataset):
         self.images = glob.glob(os.path.join(image_folder, '*'))
         assert len(self.images) > 0
         if max_images:
-            self.images = random.choices(self.images, k=max_images)
+            self.images = random.sample(self.images, k=max_images)
         print("Find {} images. ".format(len(self.images)))
 
         self.name_tag_dict = name_tag_dict
@@ -268,14 +268,14 @@ class DanbooruDataset(Dataset):
         basename = os.path.basename(image_file).split('.')[0]
         tags = self.name_tag_dict[basename]
         target = self.onehot.index_select(0, torch.LongTensor(tags)).sum(0)  # (1, num_class)
-        return image, LongTensor(target)
+        return image, target
 
     @staticmethod
     def transformer(mean, std):
-        m = Compose([RandomGrayscale(p=0.2),
+        m = Compose([  # RandomGrayscale(p=0.2),
                      # RandomHorizontalFlip(p=0.2), don't use them since label locations are not available
                      # RandomVerticalFlip(p=0.2),
-                     ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
+            ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
                      ToTensor(),
                      Normalize(mean, std)])
         return m
