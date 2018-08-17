@@ -89,7 +89,7 @@ class XecptionTextSegment(BaseModule):
         super(XecptionTextSegment, self).__init__()
         self.act_fn = nn.LeakyReLU(0.3)
         self.encoder = Xception(color_channel=3, act_fn=self.act_fn)
-        self.feature_pooling = ASP(self.encoder.last_feature_channels, 256, self.act_fn)
+        self.feature_pooling = ASP(self.encoder.last_feature_channels, 256, self.act_fn, asp_rate=[2, 4, 6])
 
         self.feature_4x_conv = nn.Sequential(
             *Conv_block(self.encoder.x4_feature_channels, 48, kernel_size=1,
@@ -98,15 +98,17 @@ class XecptionTextSegment(BaseModule):
         self.out_conv = nn.Sequential(
             *Conv_block(48 + 256, 256, kernel_size=3, stride=1, padding=1,
                         bias=False, BN=True, activation=self.act_fn),
-            *Conv_block(256, 1, kernel_size=3, stride=1, padding=1,
-                        bias=False, BN=True, activation=self.act_fn),
+            *Conv_block(256, 1, kernel_size=1, stride=1, padding=0,
+                        bias=False, BN=False, activation=None),
         )
 
     def forward(self, x):
         x, x4_features = self.encoder(x)
+        x4_features = self.feature_4x_conv(x4_features)
+
         x = self.feature_pooling(x)
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
-        x4_features = self.feature_4x_conv(x4_features)
+
         x = torch.cat([x, x4_features], dim=1)
         x = self.out_conv(x)
         x = F.interpolate(x, scale_factor=4, mode='bilinear', align_corners=False)
