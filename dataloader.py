@@ -196,7 +196,7 @@ class TestDataset(Dataset):
 
         self.img_size = image_size
 
-        self.transformer = Compose([RandomGrayscale(p=0.4),
+        self.transformer = Compose([  # RandomGrayscale(p=0.4),
                                     # ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
                                     ToTensor(),
                                     # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])

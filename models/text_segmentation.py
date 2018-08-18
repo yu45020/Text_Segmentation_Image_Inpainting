@@ -84,22 +84,21 @@ class TextSegament(BaseModule):
         return x
 
 
-class XecptionTextSegment(BaseModule):
+class XceptionTextSegment(BaseModule):
     def __init__(self):
-        super(XecptionTextSegment, self).__init__()
+        super(XceptionTextSegment, self).__init__()
         self.act_fn = nn.LeakyReLU(0.3)
         self.encoder = Xception(color_channel=3, act_fn=self.act_fn)
-        self.feature_pooling = ASP(self.encoder.last_feature_channels, 256, self.act_fn, asp_rate=[2, 4, 6])
+        self.feature_pooling = ASP(self.encoder.last_feature_channels, 256, self.act_fn, asp_rate=(3, 5, 9))
 
         self.feature_4x_conv = nn.Sequential(
             *Conv_block(self.encoder.x4_feature_channels, 48, kernel_size=1,
                         bias=False, BN=True, activation=self.act_fn))
 
         self.out_conv = nn.Sequential(
-            *Conv_block(48 + 256, 256, kernel_size=3, stride=1, padding=1,
+            *Conv_block(48 + 256, 128, kernel_size=3, stride=1, padding=1,
                         bias=False, BN=True, activation=self.act_fn),
-            *Conv_block(256, 1, kernel_size=1, stride=1, padding=0,
-                        bias=False, BN=False, activation=None),
+            nn.Conv2d(128, 1, kernel_size=3, stride=1, padding=1),
         )
 
     def forward(self, x):

@@ -1,5 +1,4 @@
 import torch
-from memory_profiler import profile
 from torch import nn
 
 from models.common import CNNLSTMClassifier
@@ -96,17 +95,16 @@ class Xception(BaseModule):
     def make_exit_flow(self, in_channel=728, out_channel=2048, rate=(2, 1)):
         m = nn.Sequential(
             ResidualBlock(in_channel, 512, 3, stride=1, padding=rate[0], dilation=rate[0], bias=False,
-                          BN=True, activation=self.act_fn, expand_channel_first=False),
-            ResidualBlock(512, out_channel, 3, stride=1, padding=rate[0], dilation=rate[0], bias=False,
-                          BN=True, activation=self.act_fn, expand_channel_first=False),
+                          BN=True, activation=self.act_fn),
+            ResidualBlock(512, 512, 3, stride=1, padding=rate[0], dilation=rate[0], bias=False,
+                          BN=True, activation=self.act_fn),
+            ResidualBlock(512, 512, 3, stride=1, padding=rate[1], dilation=rate[1], bias=False,
+                          BN=True, activation=self.act_fn),
             ResidualBlock(512, out_channel, 3, stride=1, padding=rate[1], dilation=rate[1], bias=False,
-                          BN=True, activation=self.act_fn, expand_channel_first=False),
-            ResidualBlock(512, out_channel, 3, stride=1, padding=rate[1], dilation=rate[1], bias=False,
-                          BN=True, activation=self.act_fn, expand_channel_first=False),
+                          BN=True, activation=self.act_fn),
         )
         return m
 
-    @profile
     def forward(self, x):
         x = self.entry_flow_1(x)
         x4_features = x

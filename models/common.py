@@ -53,7 +53,7 @@ def add_SCSE_block(model_block, in_channel=None):
 class ASP(BaseModule):
     # Atrous Spatial Pyramid Pooling with Image Pooling
     # add Vortex pooling https://arxiv.org/pdf/1804.06242v1.pdf
-    def __init__(self, in_channel=256, out_channel=256, act_fn=None, asp_rate=[3, 9, 27]):
+    def __init__(self, in_channel=256, out_channel=256, act_fn=None, asp_rate=(3, 9, 27)):
         super(ASP, self).__init__()
 
         self.asp = nn.Sequential(
@@ -88,8 +88,8 @@ class ASP(BaseModule):
         # avg_pool = [F.interpolate(avg_pool, size=x.shape[2:], mode='bilinear', align_corners=False)]
         asp_pool = [layer(x) for layer in self.asp.children()]
         # out_features = torch.cat(avg_pool + asp_pool, dim=1)
-        out_features = torch.cat(asp_pool, dim=1)
-        out = self.out_conv(out_features)
+        asp_pool = torch.cat(asp_pool, dim=1)
+        out = self.out_conv(asp_pool)
         return out
 
 
