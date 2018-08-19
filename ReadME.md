@@ -166,7 +166,7 @@ Memory usage: 4 CPUs and 8 images.
  ##### July 24th 
 Training the partial convolution. 
  
- ##### Aug 18
+ ##### Aug 18th
  Training Xecption based text segmentation. I pre-train a slim version of Xecption on 113k images from Danbooru2017. It is then incorporated into the segmentation model. There are significant changes compared to the model in deeplab V3 +. 
  
  * Convolutions are always followed by batch norm. Standard depth-wise separable convolution fails to converge during pre-training. Adding batch norm in between depth-wise and point-wise convolution helps significantly. 
@@ -175,7 +175,7 @@ Training the partial convolution.
  
  ![img](ReadME_imgs/xecption.svg)
  
- ![img](ReadME_imgs/Compare atrous on Xecption.jpg)
+ ![img](ReadME_imgs/Compare_atrous_Xecption.jpg)
  
  
  
