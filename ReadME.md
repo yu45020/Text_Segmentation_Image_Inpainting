@@ -29,7 +29,6 @@ The model is [Receptive Field Block (RFB)](https://arxiv.org/abs/1711.07767). It
 
 ![img](ReadME_imgs/RFB_pooling.svg)
 
-
 ### Decoder
 Deocder follows Deeplab V3+: features are up scaled x2 and concatenated with 1/4 encoder features, and then they are up-scaled back to the same size of input image. 
 
@@ -166,6 +165,19 @@ Memory usage: 4 CPUs and 8 images.
  
  ##### July 24th 
 Training the partial convolution. 
+ 
+ ##### Aug 18
+ Training Xecption based text segmentation. I pre-train a slim version of Xecption on 113k images from Danbooru2017. It is then incorporated into the segmentation model. There are significant changes compared to the model in deeplab V3 +. 
+ 
+ * Convolutions are always followed by batch norm. Standard depth-wise separable convolution fails to converge during pre-training. Adding batch norm in between depth-wise and point-wise convolution helps significantly. 
+ 
+ * Atrous rates are 2--4--2--1 in the middle and exit flow. The structure comes from a [Effective Use of Dilated Convolutions for Segmenting Small Object Instances in Remote Sensing Imagery](https://arxiv.org/ftp/arxiv/papers/1709/1709.00179.pdf) by Hamaguchi & Fujita & Nemoto & Imaizumi & Hikosaka. I run an experiment comparing it to the original model and find promising results. 
+ 
+ ![img](ReadME_imgs/xecption.svg)
+ 
+ ![img](ReadME_imgs/Compare atrous on Xecption.jpg)
+ 
+ 
  
 ## Notes on Hyper-parameters 
 * Cyclical learning rate is a great tool but needs to pick optimal base & max learning rate. Learning rate range can be as large as 0.1-1 with few epochs ([Exploring loss function topology with cyclical learning rates](https://arxiv.org/abs/1702.04283)).
