@@ -50,7 +50,7 @@ class TextSegmentationData(Dataset):
         self.grayscale = Grayscale(num_output_channels=1)
         self.img_size = image_size
         # image augment
-        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
                                     ToTensor(),
                                     Normalize(mean=mean, std=std)])
 
@@ -67,7 +67,7 @@ class TextSegmentationData(Dataset):
         return img_raw, img_mask
 
     def process_images(self, raw, clean):
-        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.5, 2), ratio=(3. / 4., 4. / 3.))
+        i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.1, 2), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
         mask_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
 
@@ -197,10 +197,10 @@ class TestDataset(Dataset):
         self.img_size = image_size
 
         self.transformer = Compose([  # RandomGrayscale(p=0.4),
-                                    # ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
-                                    ToTensor(),
-                                    # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-                                    ])
+            # ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
+            ToTensor(),
+            # Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
         self.add_random_masks = add_random_masks
 
     def __len__(self):
@@ -273,11 +273,11 @@ class DanbooruDataset(Dataset):
     @staticmethod
     def transformer(mean, std):
         m = Compose([  # RandomGrayscale(p=0.2),
-                     # RandomHorizontalFlip(p=0.2), don't use them since label locations are not available
-                     # RandomVerticalFlip(p=0.2),
+            # RandomHorizontalFlip(p=0.2), don't use them since label locations are not available
+            # RandomVerticalFlip(p=0.2),
             ColorJitter(brightness=0.2, contrast=0.2, saturation=0, hue=0),
-                     ToTensor(),
-                     Normalize(mean, std)])
+            ToTensor(),
+            Normalize(mean, std)])
         return m
 
 
