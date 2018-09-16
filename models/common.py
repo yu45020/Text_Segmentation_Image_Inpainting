@@ -157,14 +157,14 @@ class RFB(BaseModule):
 
 
 class CNNLSTMClassifier(BaseModule):
-    def __init__(self, num_class, lstm_hidden=256, batch_first=True, act_fn=nn.LeakyReLU(0.3)):
+    def __init__(self, num_class, lstm_in_channel, lstm_hidden=256, act_fn=nn.LeakyReLU(0.3)):
         super(CNNLSTMClassifier, self).__init__()
         self.global_avg = nn.AdaptiveAvgPool2d(1)
-        self.lstm = nn.LSTM(num_class, lstm_hidden, num_layers=1, batch_first=batch_first)
-        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden // 4), act_fn)
+        self.lstm = nn.LSTM(lstm_in_channel, lstm_hidden, num_layers=1, batch_first=True)
+        self.lstm_linear_z = nn.Sequential(nn.Linear(lstm_hidden, lstm_hidden), act_fn)
         self.lstm_linear_score = nn.Linear(lstm_hidden, num_class)
-        self.st_theta_linear = nn.Sequential(nn.Linear(lstm_hidden // 4, 2 * 3))
-        self.anchor_box = FloatTensor([(0, 0), (0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
+        self.st_theta_linear = nn.Linear(lstm_hidden, 2 * 3)
+        self.anchor_box = FloatTensor([(0.4, 0.4), (0.4, -0.4), (-0.4, -0.4), (-0.4, 0.4)
                                        ])
 
     @staticmethod
@@ -172,7 +172,6 @@ class CNNLSTMClassifier(BaseModule):
         # reference: Spatial Transformer Networks https://arxiv.org/abs/1506.02025
         # https://blog.csdn.net/qq_39422642/article/details/78870629
         grids = affine_grid(theta, input_image.size())
-
         output_img = grid_sample(input_image, grids)
         return output_img
 
@@ -186,29 +185,32 @@ class CNNLSTMClassifier(BaseModule):
         category_scores = []
         transform_box = []
         # h = c = torch.zeros(1, batch, self.lstm.hidden_size).cuda()
-        features = self.global_avg(img).view(batch, 1, -1)
+        # features = self.global_avg(img).view(batch, 1, -1)
+        features = img.view(batch, 1, -1)
         y, (h, c) = self.lstm(features)
-        #         s = self.lstm_linear_score(y.view(batch, -1))
-        #         category_scores.append(s)
-        for i in range(4 + 1):  # 4 anchor points and repeated 4 times
+        s = self.lstm_linear_score(y.view(batch, -1))
+        category_scores.append(s)
+
+        for i in range(4):  # 4 anchor points so repeated 4 times
             z = self.lstm_linear_z(h.transpose(0, 1).view(batch, -1))  # y.view(batch, -1)
             st_theta = self.st_theta_linear(z).view(batch, 2, 3)
-            st_theta[:, :, -1] = st_theta[:, :, -1].clone() + self.anchor_box[i]
+            st_theta[:, :, -1] = st_theta[:, :, -1] + self.anchor_box[i]
 
-            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0].clone()
-            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1].clond()
+            st_theta[:, 1, 0] = 0 * st_theta[:, 1, 0]
+            st_theta[:, 0, 1] = 0 * st_theta[:, 0, 1]
 
             transform_box.append(st_theta)
 
             img = self.spatial_transformer(input_img, st_theta)
-            features = self.global_avg(img).view(batch, 1, -1)
+            features = img.view(batch, 1, -1)
+            # features = self.global_avg(img).view(batch, 1, -1)
 
             # y.size = batch, seq_len (1) , num_direc*hidden_size
             # h, c size = num_layer*bi-direc, batch, hidden_size
             y, (h, c) = self.lstm(features, (h, c))
 
-            s = self.lstm_linear_score(
-                y.view(batch, -1))  # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
+            s = self.lstm_linear_score(y.view(batch, -1))
+            # the paper use the hidden state to get scores  h.transpose(0, 1).view(batch, -1)
             category_scores.append(s)
 
         category_scores = torch.stack(category_scores, dim=1)  # size: batch, category regions, category

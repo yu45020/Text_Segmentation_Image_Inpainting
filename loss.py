@@ -150,19 +150,21 @@ class BCERegionLoss(nn.Module):
     def anchor_loss(self, attention_region):
         # input: num_class, 2 (anchor x, y) , 1   -self.anchor_box
         distance = 0.5 * torch.pow(attention_region - self.anchor_box, 2).sum(1)
-        return 0.01 * distance.sum().view(1)
+        return distance.sum().view(1)
 
     def forward(self, input, target):
         category, transform_box = input
-        #         scores, index = category.max(1)
-        #         bce_loss = self.bce(scores, target)
+        # select the highest probabilities on number of labels among iterations
+        scores, index = category.max(1)
+        bce_loss = self.bce(scores, target)
         # all regions' predictions are checked
-        bce_loss = FloatTensor([0])
-        for i in range(category.size(1)):
-            bce_loss = bce_loss + self.bce(category[:, i, :], target)
-        bce_loss = bce_loss / category.size(1)
+        # bce_loss = sum([self.bce(category[:, i, :], target) for i in category.size(1)])
+        # bce_loss = FloatTensor([0])
+        # for i in range(category.size(1)):
+        #     bce_loss = bce_loss + self.bce(category[:, i, :], target)
+        # bce_loss = bce_loss / category.size(1)
 
-        regions = transform_box[:, 1:, :, 2:]
+        regions = transform_box[:, :, :, 2:]
         region_loss = torch.cat([self.anchor_loss(i) for i in regions]).mean()
 
         scales = transform_box[:, :, :, :2]
@@ -172,8 +174,8 @@ class BCERegionLoss(nn.Module):
         # sum over the second axis so that transformed regions will not be 0 padded
         boundary = torch.abs(transform_box).sum(-1)
         boundary = torch.pow(F.relu(boundary - 1), 2)
-        boundary_loss = 0.5 * boundary.view(boundary.size(0), -1).sum(-1).mean()
-        return bce_loss, bce_loss + 0.01 * region_loss + 0.05 * scale_loss + 0.5 * boundary_loss
+        boundary_loss = boundary.view(boundary.size(0), -1).sum(-1).mean()
+        return bce_loss, bce_loss + 0.2 * region_loss + 0.05 * scale_loss + 0.1 * boundary_loss
 
 
 # +++++++++++++++++++++++++++++++++++++
@@ -265,6 +267,22 @@ class ResNetExtractor(BaseModule):
         feature1 = nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu, resnet.maxpool, resnet.layer1)
         feature2 = nn.Sequential(resnet.layer2)
         feature3 = nn.Sequential(resnet.layer3)
+        self.features = nn.Sequential(*[feature1, feature2, feature3])
+        for param in self.features.parameters():
+            param.requires_grad = False
+
+    def forward(self, *x):
+        raise NotImplemented
+
+
+class XecptionExtractor(BaseModule):
+    def __init__(self, pretrain_model, pretrain_checkpoint):
+        super(XecptionExtractor, self).__init__()
+        pretrain_model.load_state_dict(torch.load(pretrain_checkpoint))
+        xecption = pretrain_model.encoder
+        feature1 = xecption.entry_flow_1
+        feature2 = xecption.entry_flow_2
+        feature3 = xecption.middle_flow
         self.features = nn.Sequential(*[feature1, feature2, feature3])
         for param in self.features.parameters():
             param.requires_grad = False

@@ -1,8 +1,8 @@
 import torch
 from torch import nn
 
-from models.common import CNNLSTMClassifier
 from .BaseModels import BaseModule, Conv_block, DSConvBlock
+from .common import CNNLSTMClassifier
 
 use_cuda = torch.cuda.is_available()
 FloatTensor = torch.cuda.FloatTensor if use_cuda else torch.FloatTensor
