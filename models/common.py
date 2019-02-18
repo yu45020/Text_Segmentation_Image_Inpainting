@@ -13,7 +13,7 @@ Tensor = FloatTensor
 class SpatialChannelSqueezeExcitation(BaseModule):
     # https://arxiv.org/abs/1709.01507
     # https://arxiv.org/pdf/1803.02579v1.pdf
-    def __init__(self, in_channel, reduction=16, activation=nn.ReLU(inplace=True)):
+    def __init__(self, in_channel, reduction=16, activation=nn.ReLU()):
         super(SpatialChannelSqueezeExcitation, self).__init__()
         linear_nodes = max(in_channel // reduction, 4)  # avoid only 1 node case
         self.avg_pool = nn.AdaptiveAvgPool2d(1)

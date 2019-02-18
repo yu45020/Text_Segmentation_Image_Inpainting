@@ -39,28 +39,25 @@ def draw_contour(img, mask):
 
 
 class TextSegmentationData(Dataset):
-    def __init__(self, image_folder, mean, std, max_images=False, image_size=(512, 512)):
+    def __init__(self, img_raw_folder, image_size=(256, 256)):
+        super(TextSegmentationData, self).__init__()
         # get raw images
 
-        self.images = glob.glob(os.path.join(image_folder, "raw/*"))
-        assert len(self.images) > 0
-        if max_images:
-            self.images = random.choices(self.images, k=max_images)
-        print("Find {} images. ".format(len(self.images)))
-        self.grayscale = Grayscale(num_output_channels=1)
+        self.raw_images = glob.glob(os.path.join(img_raw_folder, "*"))
+        assert len(self.raw_images) > 0
+        print("Find {} images. ".format(len(self.raw_images)))
+
         self.img_size = image_size
         # image augment
-        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2),
-                                    ToTensor(),
-                                    Normalize(mean=mean, std=std)])
+        self.transformer = Compose([ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)])
 
     def __len__(self):
-        return len(self.images)
+        return len(self.raw_images)
 
     def __getitem__(self, item):
-        img_file = self.images[item]
+        img_file = self.raw_images[item]
         # avoid multiprocessing on the same image
-        img_raw = Image.open(img_file).convert('RGB')
+        img_raw = Image.open(img_file).convert('L')
         # masks are  pre-generated with cv2.dilate of 5 on images
         img_mask = Image.open(re.sub("raw", 'mask', img_file)).convert("L")
         img_raw, img_mask = self.process_images(img_raw, img_mask)
@@ -69,28 +66,12 @@ class TextSegmentationData(Dataset):
     def process_images(self, raw, clean):
         i, j, h, w = RandomResizedCrop.get_params(raw, scale=(0.1, 2), ratio=(3. / 4., 4. / 3.))
         raw_img = resized_crop(raw, i, j, h, w, size=self.img_size, interpolation=Image.BICUBIC)
-        mask_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
-
-        # get mask before further image augment
-        mask_tensor = self.get_mask(raw_img, mask_img)
         raw_img = self.transformer(raw_img)
-        return raw_img, mask_tensor
+        # raw_img = np.array(raw_img)
 
-    def get_mask(self, raw_pil, mask_pil):
-        # use PIL ! It will take care the difference in brightness/contract
-        # raw = raw_pil.convert("L")
-        # clean = clean_pil.convert("L")
-        # mask = ImageChops.difference(raw, clean)
-        mask = np.array(mask_pil)
-        mask = np.where(mask > brightness_difference * 255, np.uint8(255), np.uint8(0))
-        # kernel size should not be too large
-        # find tune it s.t. all words are just blurred
-        mask = cv2.dilate(mask, np.ones((2, 2), np.uint8), iterations=1)
-        # mask = draw_contour(mask, mask)
-        mask = np.expand_dims(mask, -1)
-        mask = to_tensor(mask)
-        # mask = mask > brightness_difference
-        return mask  # .float()  # .long()
+        mask_img = resized_crop(clean, i, j, h, w, self.img_size, interpolation=Image.BICUBIC)
+        # mask_img = np.array(mask_img)
+        return to_tensor(raw_img), to_tensor(mask_img)
 
 
 class ImageInpaintingData(Dataset):

@@ -10,7 +10,7 @@ from torch.nn import functional as F
 from torchvision.transforms.functional import to_pil_image
 from torchvision.utils import save_image
 
-from dataloader import EvaluateSet
+from Dataloader import EvaluateSet
 from models.text_segmentation import TextSegament
 
 

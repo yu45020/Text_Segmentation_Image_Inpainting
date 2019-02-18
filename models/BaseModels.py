@@ -5,7 +5,7 @@ from torch import nn
 
 
 # +++++++++++++++++++++++++++++++++++++
-#           Add more functions to PyTorch's base model
+#  More functions to PyTorch's base model
 # -------------------------------------
 
 
