@@ -2,6 +2,7 @@
 
 This is an ongoing project that aims to solve a simple but teddies procedure: remove texts from an image. It will reduce commic book translators' time on erasing Japanese words.
 
+
 The road ahead:
 * Detect and generate text mask from an image
 * Use the generated mask to white out words
