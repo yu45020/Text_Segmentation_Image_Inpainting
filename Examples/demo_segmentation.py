@@ -11,11 +11,11 @@ from torchvision.transforms.functional import to_pil_image
 from torchvision.utils import save_image
 
 from Dataloader import EvaluateSet
-from models.text_segmentation import TextSegament
+from models.text_segmentation import TextSegament, XceptionTextSegment
 
 
 def draw_bounding_box(img, mask, area_threshold=100):
-    a, b, c = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    b, c = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     for cnt in b:
         area = cv2.contourArea(cnt)
         if area > area_threshold:
@@ -25,16 +25,16 @@ def draw_bounding_box(img, mask, area_threshold=100):
     return img
 
 
-def process(eval_img):
+def process(eval_img, device='cpu'):
     (img, origin, unpadder), file_name = eval_img
     with torch.no_grad():
-        out = model(img)
+        out = model(img.to(device))
 
     prob = F.sigmoid(out)
     mask = prob > 0.5
     mask = torch.nn.MaxPool2d(kernel_size=(3, 3), padding=(1, 1), stride=1)(mask.float()).byte()
     mask = unpadder(mask)
-    mask = mask.float()
+    mask = mask.float().cpu()
 
     save_image(mask, file_name + ' _mask.jpg')
     origin_np = np.array(to_pil_image(origin[0]))
@@ -49,20 +49,22 @@ def process(eval_img):
     # out.save(file_name + ' _box.jpg')
 
 
-if __name__ == '__main__':
-    model = TextSegament(width_mult=2)
-    model.total_parameters()
+model = XceptionTextSegment()
+model.total_parameters()
 
-    # the model is trained with in-place batch norm, but the weights are compatible with torch's batch norm
-    old = torch.load("checkpoints/text_seg_model_838epos.pt", map_location='cpu')
-    model.load_state_dict(old)
+# the model is trained with in-place batch norm, but the weights are compatible with torch's batch norm
+model.load_state_dict(torch.load("checkpoints/text_seg_model_681epos.pt", map_location='cpu'))
+model = model.cuda()
 
-    evalset = EvaluateSet(mean=[0.4935, 0.4563, 0.4544],
-                          std=[0.3769, 0.3615, 0.3566],
-                          img_folder='test_data',
-                          resize=600)
+evalset = EvaluateSet(mean=[0.4935, 0.4563, 0.4544],
+                      std=[0.3769, 0.3615, 0.3566],
+                      img_folder='test_data',
+                      resize=600)
 
-    a = time.time()
-    with ThreadPool(cpu_count() - 1) as p:
-        p.map(process, evalset)
-    print("Runtime :{}".format(time.time() - a))
+a = time.time()
+for i in evalset:
+    process(i, 'cuda')
+
+# with ThreadPool(cpu_count() - 1) as p:
+#     p.map(process, evalset)
+print("Runtime :{}".format(time.time() - a))

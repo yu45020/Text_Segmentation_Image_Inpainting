@@ -74,6 +74,18 @@ class BaseModule(nn.Module):
 # +++++++++++++++++++++++++++++++++++++
 #           Convolution Wrappers
 # -------------------------------------
+# def Conv_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
+#                dilation=1, groups=1, bias=True, BN=False, activation=None):
+#     m = [nn.Conv2d(in_channels, out_channels, kernel_size, stride,
+#                    padding, dilation, groups, bias)]
+#     if BN:
+#         if activation:
+#             m += [nn.Sequential(nn.GroupNorm(num_groups=32, num_channels=out_channels), activation)]
+#         else:
+#             m += [nn.Sequential(nn.GroupNorm(num_groups=32, num_channels=out_channels))]
+#     if BN is False and activation is not None:
+#         m += [activation]
+#     return m
 
 
 def Conv_block(in_channels, out_channels, kernel_size, stride=1, padding=0,
